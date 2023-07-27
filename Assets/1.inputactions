@@ -1,0 +1,76 @@
+{
+    "name": "1",
+    "maps": [
+        {
+            "name": "Movement",
+            "id": "cc117db7-1d18-4f80-bf06-d752aef6ed10",
+            "actions": [
+                {
+                    "name": "DualAction",
+                    "type": "Value",
+                    "id": "9de9c60c-3c56-48f7-9852-5d62e0be81c6",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "G920",
+                    "type": "Value",
+                    "id": "885ebdac-1548-44a0-8c93-c5117b991dd0",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "1D Axis",
+                    "id": "2cb27ea8-d741-4dd0-b3b2-a5cc98f10125",
+                    "path": "1DAxis",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "DualAction",
+                    "isComposite": true,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "negative",
+                    "id": "56e107ab-fe04-477d-a667-46c1e3c14831",
+                    "path": "<HID::Logitech Logitech Dual Action>/button6",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "DualAction",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "positive",
+                    "id": "2b5c9078-221e-46b5-bab7-c8f114f97887",
+                    "path": "<HID::Logitech Logitech Dual Action>/button5",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "DualAction",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "",
+                    "id": "9e4dd0f8-0148-4e56-9da2-c4fc4724b668",
+                    "path": "<HID::Logitech G920 Driving Force Racing Wheel for Xbox One>/stick/right",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "G920",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": []
+}
