@@ -18,7 +18,7 @@
                     "name": "G920",
                     "type": "Value",
                     "id": "885ebdac-1548-44a0-8c93-c5117b991dd0",
-                    "expectedControlType": "",
+                    "expectedControlType": "Axis",
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": true
@@ -59,15 +59,70 @@
                     "isPartOfComposite": true
                 },
                 {
-                    "name": "",
-                    "id": "9e4dd0f8-0148-4e56-9da2-c4fc4724b668",
-                    "path": "<HID::Logitech G920 Driving Force Racing Wheel for Xbox One>/stick/right",
+                    "name": "L/R",
+                    "id": "bbf29d34-70b4-48a1-9d40-87559b045dd3",
+                    "path": "1DAxis",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "G920",
+                    "isComposite": true,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "negative",
+                    "id": "e9aed56a-c88f-48df-be66-69eb4945b77f",
+                    "path": "<HID::Logitech G920 Driving Force Racing Wheel for Xbox One>/stick/x",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
                     "action": "G920",
                     "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "positive",
+                    "id": "99a965b7-b6bb-4d13-853f-40885654c3d0",
+                    "path": "<HID::Logitech G920 Driving Force Racing Wheel for Xbox One>/stick/x",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "G920",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "U/D",
+                    "id": "e0e71766-b74c-426e-9b33-875803ce490c",
+                    "path": "1DAxis",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "G920",
+                    "isComposite": true,
                     "isPartOfComposite": false
+                },
+                {
+                    "name": "positive",
+                    "id": "72ffc83c-04ae-4ce7-812a-53c21600f15a",
+                    "path": "<HID::Logitech G920 Driving Force Racing Wheel for Xbox One>/stick/y",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "G920",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "positive",
+                    "id": "f7e96d7e-7185-4b43-a280-b5000fafd393",
+                    "path": "<HID::Logitech G920 Driving Force Racing Wheel for Xbox One>/z",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "G920",
+                    "isComposite": false,
+                    "isPartOfComposite": true
                 }
             ]
         }
