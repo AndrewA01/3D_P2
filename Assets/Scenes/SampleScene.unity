@@ -8888,6 +8888,8 @@ GameObject:
   - component: {fileID: 469792359}
   - component: {fileID: 469792364}
   - component: {fileID: 469792363}
+  - component: {fileID: 469792365}
+  - component: {fileID: 469792366}
   m_Layer: 0
   m_Name: Car
   m_TagString: Untagged
@@ -9007,6 +9009,36 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 10
   rotationSpeed: 70
+--- !u!114 &469792365
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 469792358}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2460c9e0b971ab64db12e9c05fab9ebd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  xAxes: 0
+  GasInput: 0
+  BreakInput: 0
+  ClutchInput: 0
+  CurrentGear: 0
+--- !u!114 &469792366
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 469792358}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1bfc823845fa4a54ab54a328f7755adb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  lastposition: {x: 0, y: 0, z: 0}
 --- !u!1 &472823724
 GameObject:
   m_ObjectHideFlags: 0
@@ -19946,7 +19978,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh24394
+  m_Name: pb_Mesh26860
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2
@@ -28946,7 +28978,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh24380
+  m_Name: pb_Mesh26778
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2
