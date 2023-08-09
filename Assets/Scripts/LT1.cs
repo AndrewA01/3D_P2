@@ -11,6 +11,8 @@ public bool TestBool;
 public string TestString;
 public GameObject TestGO_attachment;
 public Transform Target;
+public List<GameObject> example_GO;
+public List<Transform> example_T;
 
 
     // Start is called before the first frame update
