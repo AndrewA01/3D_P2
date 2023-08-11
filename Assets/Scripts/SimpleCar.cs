@@ -8,6 +8,8 @@ public class SimpleCar : MonoBehaviour
     public float speed = 10.0f;
     public float rotationSpeed = 100.0f;
 
+
+
     void Update()
     {
         // Get the horizontal and vertical axis.
