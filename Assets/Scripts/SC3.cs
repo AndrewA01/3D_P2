@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class LT2 : MonoBehaviour
+public class SC3 : MonoBehaviour
 {
 
     public float speed = 10f;
@@ -23,6 +23,14 @@ public class LT2 : MonoBehaviour
         transform.Translate(Vector3.forward * forwardMovement);
         }
         if(Input.GetKey("a"))
+        {
+        transform.Rotate(Vector3.up * turnMovement);
+        }
+        if(Input.GetKey("s"))
+        {
+        transform.Translate(Vector3.forward * forwardMovement);
+        }
+        if(Input.GetKey("d"))
         {
         transform.Rotate(Vector3.up * turnMovement);
         }
