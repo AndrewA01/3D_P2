@@ -50,11 +50,9 @@ public class MWS : MonoBehaviour
         RL.brakeTorque = currentBreakForce;
         RL.brakeTorque = currentBreakForce;
 
+        // STEERING
         currentTurnAngle = maxTurnAngle * Input.GetAxis("Horizontal");
         FL.steerAngle = currentTurnAngle;
         FR.steerAngle = currentTurnAngle;
-
-
     }
-
 }

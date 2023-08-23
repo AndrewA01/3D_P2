@@ -13757,9 +13757,8 @@ GameObject:
   - component: {fileID: 469792360}
   - component: {fileID: 469792359}
   - component: {fileID: 469792363}
+  - component: {fileID: 469792364}
   - component: {fileID: 469792365}
-  - component: {fileID: 469792368}
-  - component: {fileID: 469792369}
   m_Layer: 0
   m_Name: Car 1
   m_TagString: Untagged
@@ -13865,6 +13864,28 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &469792364
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 469792358}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c18d9e697f7f894b818f9978fb4f2bf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  xAxes: 0
+  GasInput: 0
+  BreakInput: 0
+  FL: {fileID: 186789986}
+  FR: {fileID: 344905713}
+  RL: {fileID: 1745738970}
+  RR: {fileID: 328533476}
+  acceleration: 600
+  breakingForce: 250
+  maxTurnAngle: 15
 --- !u!114 &469792365
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -13872,37 +13893,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 469792358}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2460c9e0b971ab64db12e9c05fab9ebd, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  xAxes: 0
-  GasInput: 0
-  BreakInput: 0
-  ClutchInput: 0
-  CurrentGear: 0
---- !u!114 &469792368
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 469792358}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1bfc823845fa4a54ab54a328f7755adb, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  lastposition: {x: 0, y: 0, z: 0}
---- !u!114 &469792369
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 469792358}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bd13f427f0fa5424eaf30bf328975367, type: 3}
   m_Name: 
@@ -13912,8 +13903,8 @@ MonoBehaviour:
   RL: {fileID: 1745738970}
   RR: {fileID: 328533476}
   acceleration: 600
-  breakingForce: 400
-  maxTurnAngle: 16
+  breakingForce: 250
+  maxTurnAngle: 15
 --- !u!1 &472823724
 GameObject:
   m_ObjectHideFlags: 0
@@ -28371,7 +28362,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh85210
+  m_Name: pb_Mesh234040
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2
@@ -35914,7 +35905,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh126690
+  m_Name: pb_Mesh236286
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2
@@ -38695,7 +38686,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh87026
+  m_Name: pb_Mesh235856
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2
@@ -40397,7 +40388,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh125950
+  m_Name: pb_Mesh234934
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2
@@ -42704,7 +42695,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh85058
+  m_Name: pb_Mesh233888
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2
@@ -56098,7 +56089,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh84526
+  m_Name: pb_Mesh233360
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2

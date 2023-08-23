@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class RotateWW2 : MonoBehaviour
+public class RotateTireAuto : MonoBehaviour
 
 {
     Rigidbody m_Rigidbody;
