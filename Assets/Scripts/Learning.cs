@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class LT1 : MonoBehaviour
+public class Learning : MonoBehaviour
 {
 
 public float TestFloat;
