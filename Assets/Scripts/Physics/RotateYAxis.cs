@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Myown2 : MonoBehaviour
+public class RotateYAxis : MonoBehaviour
 
 {
     Rigidbody m_Rigidbody;
