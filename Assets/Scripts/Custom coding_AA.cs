@@ -2,9 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class PressA : MonoBehaviour
+public class CCAA : MonoBehaviour
 {
-    public float speed = 100f;
+    public float speed = 10.0f;
     public float rotationSpeed = 100.0f;
     private Rigidbody rb;
 
@@ -16,7 +16,7 @@ public class PressA : MonoBehaviour
     {
         if(Input.GetKey("a"))
         {
-            rb.AddForce(transform.forward * speed);
+            rb.AddForce(transform.up * speed);
         }
     }
 }

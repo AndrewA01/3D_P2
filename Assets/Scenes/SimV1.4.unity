@@ -28371,7 +28371,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh85210
+  m_Name: pb_Mesh123634
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2
@@ -29005,7 +29005,7 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
-  m_LocalRotation: {x: -0.009561397, y: 0.0033917981, z: 0.000032431995, w: 0.99994856}
+  m_LocalRotation: {x: -0.009561397, y: 0.0033917967, z: 0.00003243198, w: 0.99994856}
   m_LocalPosition: {x: -0.56999975, y: 2.9299998, z: 0.01}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -38695,7 +38695,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh87026
+  m_Name: pb_Mesh126442
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2
@@ -42704,7 +42704,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh85058
+  m_Name: pb_Mesh123482
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2
@@ -51858,7 +51858,7 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1757816642}
-  m_LocalRotation: {x: -0.009561397, y: 0.0033917981, z: 0.000032431995, w: 0.99994856}
+  m_LocalRotation: {x: -0.009561397, y: 0.0033917967, z: 0.00003243198, w: 0.99994856}
   m_LocalPosition: {x: -0.56999975, y: 2.9299998, z: 0.01}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -55939,6 +55939,7 @@ GameObject:
   - component: {fileID: 1866591748}
   - component: {fileID: 1866591747}
   - component: {fileID: 1866591746}
+  - component: {fileID: 1866591745}
   - component: {fileID: 1866591751}
   m_Layer: 0
   m_Name: Car 3
@@ -55947,6 +55948,29 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
+--- !u!114 &1866591745
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1866591744}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9e486ffc0008d464d9d49527588bb9d5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  waypoints:
+  - {fileID: 1409755120}
+  - {fileID: 2116830690}
+  - {fileID: 1952444547}
+  - {fileID: 1004814860}
+  - {fileID: 723530811}
+  - {fileID: 1852609208}
+  - {fileID: 100221346}
+  - {fileID: 1282119652}
+  - {fileID: 933122812}
+  speed: 11
 --- !u!54 &1866591746
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -56098,7 +56122,7 @@ Mesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh84526
+  m_Name: pb_Mesh125088
   serializedVersion: 10
   m_SubMeshes:
   - serializedVersion: 2
