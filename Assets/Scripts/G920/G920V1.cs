@@ -80,7 +80,7 @@ public class G920V1 : MonoBehaviour
         FL.brakeTorque = currentBreakForce;
         FR.brakeTorque = currentBreakForce;
         RL.brakeTorque = currentBreakForce;
-        RL.brakeTorque = currentBreakForce;
+        RR.brakeTorque = currentBreakForce;
 
         // STEERING
         currentTurnAngle = maxTurnAngle * xAxes;
