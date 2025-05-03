@@ -8,7 +8,7 @@ public class Collider2 : MonoBehaviour
     public float logInterval = 0.1f;
 
     private List<string> logData = new List<string>();
-    private string folderPath = "Assets/CSVCollection/BoxCollidor";
+    private string folderPath = "Assets/CSVCollection/BoxCollider";
 
     private bool isOnCollider = false;
     private int collisionCount = 0;
