@@ -1,26 +1,25 @@
 using UnityEngine;
-using System.Collections;
-
-// A very simplistic car driving on the x-z plane.
 
 public class SWRotation : MonoBehaviour
 {
-    public float speed = 10.0f;
-    public float rotationSpeed = 100.0f;
+    [Header("Steering Input Settings")]
+    public float maxSteeringAngle = 270f;      // Full left = -135, right = +135
+    public float steerSpeed = 5f;              // How quickly the wheel reacts
+
+    private float currentSteeringAngle = 0f;
 
     void Update()
     {
-        // Get the horizontal axis.
-        // By default they are mapped to the arrow keys.
-        // The value is in the range -1 to 1
-    
-        float rotation = Input.GetAxis("Horizontal") * rotationSpeed;
+        // Get horizontal input (Wheels turn even if car is slow)
+        float input = Input.GetAxis("Horizontal"); // Range -1 to 1
 
-        // Make it move 10 meters per second instead of 10 meters per frame...
+        // Target angle based on input
+        float targetAngle = input * (maxSteeringAngle / 2f);
 
-        rotation *= Time.deltaTime;
+        // Smoothly move toward that angle
+        currentSteeringAngle = Mathf.Lerp(currentSteeringAngle, targetAngle, steerSpeed * Time.deltaTime);
 
-        // Rotate around our y-axis
-        transform.Rotate(0, rotation, 0);
+        // Apply to visual wheel (adjust axis if needed)
+        transform.localRotation = Quaternion.Euler(0f, -currentSteeringAngle, 0f); // Use X or Z based on your setup
     }
 }

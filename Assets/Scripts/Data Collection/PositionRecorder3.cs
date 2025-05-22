@@ -2,10 +2,10 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
-public class PositioRecorder3 : MonoBehaviour
+public class PositionRecorder3 : MonoBehaviour
 {
-    public GameObject target; // Assign in Inspector
-    public float recordInterval = 0.1f; // Time in seconds between records
+    public GameObject target;               // Assign the target GameObject in Inspector
+    public float recordInterval = 0.1f;    // Seconds between records
 
     private List<string> positionData = new List<string>();
     private float timer = 0f;
@@ -13,9 +13,11 @@ public class PositioRecorder3 : MonoBehaviour
     // Folder path relative to the project
     private string relativeFolderPath = "Assets/CSVCollection/NewPL";
 
+    private Rigidbody targetRigidbody;
+
     void Start()
     {
-        positionData.Add("Time,X,Y,Z");
+        positionData.Add("Time,X,Y,Z,SpeedMPH");  // Add SpeedMPH to CSV header
 
         // Ensure the folder exists
         if (!Directory.Exists(relativeFolderPath))
@@ -23,6 +25,13 @@ public class PositioRecorder3 : MonoBehaviour
             Directory.CreateDirectory(relativeFolderPath);
             Debug.Log($"Created folder at: {relativeFolderPath}");
         }
+
+        // Try to get Rigidbody from target for speed calculation
+        if (target != null)
+            targetRigidbody = target.GetComponent<Rigidbody>();
+
+        if (targetRigidbody == null)
+            Debug.LogWarning("No Rigidbody found on target. Speed will be recorded as 0.");
     }
 
     void Update()
@@ -34,7 +43,12 @@ public class PositioRecorder3 : MonoBehaviour
         {
             timer = 0f;
             Vector3 pos = target.transform.position;
-            string entry = $"{Time.time:F2},{pos.x:F4},{pos.y:F4},{pos.z:F4}";
+
+            float speedMPH = 0f;
+            if (targetRigidbody != null)
+                speedMPH = targetRigidbody.velocity.magnitude * 2.23694f;  // Convert m/s to MPH
+
+            string entry = $"{Time.time:F2},{pos.x:F4},{pos.y:F4},{pos.z:F4},{speedMPH:F2}";
             positionData.Add(entry);
         }
     }
@@ -52,7 +66,7 @@ public class PositioRecorder3 : MonoBehaviour
         try
         {
             File.WriteAllLines(filePath, positionData);
-            Debug.Log($"Position data saved to: {filePath}");
+            Debug.Log($"Position and speed data saved to: {filePath}");
         }
         catch (IOException e)
         {
