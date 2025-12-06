@@ -4,34 +4,58 @@ using UnityEngine;
 
 public class PositionRecorder3 : MonoBehaviour
 {
-    public GameObject target;               // Assign the target GameObject in Inspector
-    public float recordInterval = 0.1f;    // Seconds between records
+    [Header("Target")]
+    public GameObject target;
+    public float recordInterval = 0.1f;
 
-    private List<string> positionData = new List<string>();
+    private List<string> positionRows = new List<string>();
     private float timer = 0f;
+    private float trialStartTime = 0f;
 
-    // Folder path relative to the project
     private string relativeFolderPath = "Assets/CSVCollection/NewPL";
 
     private Rigidbody targetRigidbody;
 
+    // Metadata
+    private string participantID = "NA";
+    private string blockLabel = "NA";  // Day / Night
+    private int trialIndex = -1;
+
+    private string trialType = "Unknown";
+    private string expectancyLabel = "Unknown";
+    private string signalColorLabel = "Unknown";
+    private string mergeSideLabel = "Unknown";
+
+    private const string CsvHeader =
+        "ParticipantID,Block,TrialIndex,TrialType,Expectancy,SignalColor,MergeSide," +
+        "TimeAbsolute,TimeRelative,X,Y,Z,SpeedMPH";
+
     void Start()
     {
-        positionData.Add("Time,X,Y,Z,SpeedMPH");  // Add SpeedMPH to CSV header
+        trialStartTime = Time.time;
 
-        // Ensure the folder exists
-        if (!Directory.Exists(relativeFolderPath))
+        // Pull metadata from ExperimentController
+        if (ExperimentController.Instance != null && ExperimentController.Instance.experimentRunning)
         {
-            Directory.CreateDirectory(relativeFolderPath);
-            Debug.Log($"Created folder at: {relativeFolderPath}");
+            participantID = ExperimentController.Instance.participantID; 
+            blockLabel = ExperimentController.Instance.currentBlock.ToString(); // Day/Night
+            trialIndex = ExperimentController.Instance.currentTrialIndex;
+
+            var cond = ExperimentController.Instance.CurrentCondition;
+
+            trialType = cond.isPractice ? "Practice" : "Main";
+            expectancyLabel = cond.expectancy.ToString();
+            signalColorLabel = cond.signalColor.ToString();
+            mergeSideLabel = cond.mergeSide.ToString();
         }
 
-        // Try to get Rigidbody from target for speed calculation
+        // Ensure folder exists
+        if (!Directory.Exists(relativeFolderPath))
+            Directory.CreateDirectory(relativeFolderPath);
+
+        // Rigidbody for speed
         if (target != null)
             targetRigidbody = target.GetComponent<Rigidbody>();
-
-        if (targetRigidbody == null)
-            Debug.LogWarning("No Rigidbody found on target. Speed will be recorded as 0.");
     }
 
     void Update()
@@ -42,31 +66,63 @@ public class PositionRecorder3 : MonoBehaviour
         if (timer >= recordInterval)
         {
             timer = 0f;
+
             Vector3 pos = target.transform.position;
 
-            float speedMPH = 0f;
-            if (targetRigidbody != null)
-                speedMPH = targetRigidbody.velocity.magnitude * 2.23694f;  // Convert m/s to MPH
+            float speedMPH = (targetRigidbody != null)
+                ? targetRigidbody.velocity.magnitude * 2.23694f
+                : 0f;
 
-            string entry = $"{Time.time:F2},{pos.x:F4},{pos.y:F4},{pos.z:F4},{speedMPH:F2}";
-            positionData.Add(entry);
+            float timeAbsolute = Time.time;
+            float timeRelative = Time.time - trialStartTime;
+
+            string row =
+                $"{participantID}," +
+                $"{blockLabel}," +
+                $"{trialIndex}," +
+                $"{trialType}," +
+                $"{expectancyLabel}," +
+                $"{signalColorLabel}," +
+                $"{mergeSideLabel}," +
+                $"{timeAbsolute:F2}," +
+                $"{timeRelative:F2}," +
+                $"{pos.x:F4},{pos.y:F4},{pos.z:F4}," +
+                $"{speedMPH:F2}";
+
+            positionRows.Add(row);
         }
     }
 
-    void OnApplicationQuit()
+    void OnDestroy()
     {
         SaveToCSV();
     }
 
     private void SaveToCSV()
     {
-        string fileName = $"PositionData_{System.DateTime.Now:yyyy-MM-dd_HH-mm-ss}.csv";
+        // -----------------------------------------
+        // ⭐ NEW NAMING FORMAT:
+        // P{ID}_{Day/Night}.csv
+        // -----------------------------------------
+        string fileName = $"P{participantID}_{blockLabel}.csv";
         string filePath = Path.Combine(relativeFolderPath, fileName);
 
         try
         {
-            File.WriteAllLines(filePath, positionData);
-            Debug.Log($"Position and speed data saved to: {filePath}");
+            bool exists = File.Exists(filePath);
+
+            using (StreamWriter sw = new StreamWriter(filePath, append: true))
+            {
+                // Write header ONLY once
+                if (!exists)
+                    sw.WriteLine(CsvHeader);
+
+                // Write all data rows for this trial
+                foreach (string row in positionRows)
+                    sw.WriteLine(row);
+            }
+
+            Debug.Log($"Appended {positionRows.Count} rows → {filePath}");
         }
         catch (IOException e)
         {

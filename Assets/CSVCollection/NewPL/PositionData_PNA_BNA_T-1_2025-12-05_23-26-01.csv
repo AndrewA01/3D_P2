@@ -1,0 +1,15 @@
+ParticipantID,Block,TrialIndex,TrialType,Expectancy,SignalColor,MergeSide,TimeAbsolute,TimeRelative,X,Y,Z,SpeedMPH
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,0.35,0.35,0.0022,0.8588,-0.0074,0.35
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,0.46,0.46,0.0036,0.8706,-0.0089,0.15
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,0.57,0.57,0.0039,0.8735,-0.0076,0.08
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,0.67,0.67,0.0036,0.8723,-0.0054,0.10
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,0.77,0.77,0.0029,0.8699,-0.0034,0.10
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,0.87,0.87,0.0022,0.8677,-0.0019,0.07
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,0.98,0.98,0.0015,0.8666,-0.0013,0.03
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,1.08,1.08,0.0009,0.8663,-0.0012,0.02
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,1.18,1.18,0.0006,0.8666,-0.0015,0.02
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,1.28,1.28,0.0005,0.8671,-0.0020,0.02
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,1.39,1.39,0.0005,0.8674,-0.0024,0.01
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,1.50,1.50,0.0007,0.8676,-0.0026,0.01
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,1.60,1.60,0.0009,0.8676,-0.0027,0.01
+NA,NA,-1,Unknown,Unknown,Unknown,Unknown,1.70,1.70,0.0011,0.8676,-0.0026,0.01

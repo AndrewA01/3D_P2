@@ -1,0 +1,6 @@
+ParticipantID,Block,TrialIndex,TrialType,Expectancy,SignalColor,MergeSide,TimeAbsolute,TimeRelative,X,Y,Z,SpeedMPH
+99,Day,10,Main,Unexpected,Amber,Right,30.11,0.00,0.0000,1.0765,-0.0025,1.32
+99,Day,10,Main,Unexpected,Amber,Right,30.21,0.10,0.0000,0.9587,-0.0025,3.51
+99,Day,10,Main,Unexpected,Amber,Right,30.31,0.20,0.0000,0.8433,-0.0024,0.47
+99,Day,10,Main,Unexpected,Amber,Right,30.41,0.31,0.0022,0.8588,-0.0074,0.35
+99,Day,10,Main,Unexpected,Amber,Right,30.52,0.41,0.0034,0.8693,-0.0089,0.18

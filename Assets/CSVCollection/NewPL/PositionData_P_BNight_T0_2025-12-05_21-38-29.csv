@@ -1,0 +1,13 @@
+ParticipantID,Block,TrialIndex,TrialType,Expectancy,SignalColor,MergeSide,TimeAbsolute,TimeRelative,X,Y,Z,SpeedMPH
+,Night,0,Practice,Expected,Red,Left,1.85,0.00,0.0000,1.0608,-0.0025,1.76
+,Night,0,Practice,Expected,Red,Left,1.95,0.10,0.0000,0.9234,-0.0025,3.95
+,Night,0,Practice,Expected,Red,Left,2.06,0.20,0.0005,0.8465,-0.0037,0.46
+,Night,0,Practice,Expected,Red,Left,2.16,0.31,0.0025,0.8614,-0.0082,0.32
+,Night,0,Practice,Expected,Red,Left,2.26,0.41,0.0035,0.8705,-0.0106,0.15
+,Night,0,Practice,Expected,Red,Left,2.36,0.51,0.0041,0.8734,0.0061,0.48
+,Night,0,Practice,Expected,Red,Left,2.46,0.61,0.0037,0.8707,0.0463,1.11
+,Night,0,Practice,Expected,Red,Left,2.57,0.72,0.0021,0.8697,0.1139,1.78
+,Night,0,Practice,Expected,Red,Left,2.67,0.82,0.0037,0.8699,0.2108,2.44
+,Night,0,Practice,Expected,Red,Left,2.78,0.92,0.0113,0.8696,0.3376,3.10
+,Night,0,Practice,Expected,Red,Left,2.88,1.03,0.0259,0.8700,0.5270,3.83
+,Night,0,Practice,Expected,Red,Left,2.99,1.14,0.0369,0.8699,0.7096,4.24

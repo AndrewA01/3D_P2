@@ -5,13 +5,31 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 0
-    path: Assets/Scenes/SampleScene.unity
-    guid: 9fc0d4010bbf28b4594072e72b8655ab
-  - enabled: 0
-    path: Assets/Scenes/SimV1.5.unity
-    guid: bd7943538cfac384d933a2de4a797d24
   - enabled: 1
-    path: Assets/Scenes/SimV1.6.3.unity
-    guid: f13abcbeed4338f4a84aafa51f92aafb
+    path: Assets/Scenes/ExpScenes/SubBlock.unity
+    guid: f92b5ad5154837b4fa2119f47bd166b9
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/E_Amb_Left.unity
+    guid: 1eee6d5c61708784aa02d41664caea6d
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/E_Amb_Right.unity
+    guid: 14909f19572e5dd40b3a6f472bd2e072
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/E_Red_Left.unity
+    guid: 4908b1f629299f14ebae32d59a2a4ddd
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/E_Red_Right.unity
+    guid: 9a8ae6ea91ec4794e98964203d1dc8a7
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/U_Amb_Left.unity
+    guid: 2e4bc91f891b9d146af290c02c5371e7
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/U_Amb_Right.unity
+    guid: 0ad87862f58775547b71f83fe7235042
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/U_Red_Left.unity
+    guid: 9d9a6466a188b51459c28ccb9e7a690d
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/U_Red_Right.unity
+    guid: 7492b22747c738b40b52e5e3da01a427
   m_configObjects: {}
