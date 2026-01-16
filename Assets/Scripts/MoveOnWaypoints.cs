@@ -17,44 +17,70 @@ public class MoveOnWaypoints : MonoBehaviour
 
     public float spawnYawDegrees = 0f;
 
-    [Header("Pre-merge: Z gap behind player (until merge triggers)")]
-    public float preMergeGapBehindMeters = 30f;
+    [Header("Phase 2: Pre-merge (combined)")]
+    [Tooltip("Adjacent lane X to hold until merge triggers.")]
+    public float adjacentLaneX = -3.5f;
+
+    [Tooltip("How fast it slides laterally to adjacent lane (units/sec).")]
+    public float lateralSpeed = 2.0f;
+
+    [Tooltip("Desired gap behind player during Phase 2 (meters).")]
+    public float gapBehindMeters = 30f;
+
+    [Tooltip("Never allow gap smaller than this when supposed to be behind.")]
     public float minGapMeters = 15f;
 
-    [Tooltip("How strongly the bot corrects gap error (pre-merge).")]
+    [Header("Speed / Gap Control (used in Phase 2)")]
+    [Tooltip("How strongly the bot corrects gap error (higher = tighter).")]
     public float gapKp = 0.8f;
 
-    [Tooltip("How fast the bot can change speed (m/s^2) pre-merge.")]
+    [Tooltip("How fast the bot can change speed (m/s^2).")]
     public float accel = 8.0f;
 
-    [Tooltip("Clamp how much faster/slower than player the bot is allowed to go while correcting gap.")]
+    [Tooltip("Clamp how much faster/slower than player the bot can go while correcting gap.")]
     public float maxSpeedDeltaFromPlayer = 10f;
 
-    [Tooltip("Absolute cap for bot speed pre-merge.")]
+    [Tooltip("Absolute cap for bot speed in Phase 2 (m/s).")]
     public float maxSpeed = 40f;
 
-    [Header("Phase 2: Move to X (while holding Z gap)")]
-    public float phase2TargetX = -3.5f;
-    public float phase2LateralSpeed = 2.0f;
-    public float phase2FinishTolX = 0.05f;
-
-    [Header("Phase 3: Merge Event (always random 15–45s after spawn)")]
+    [Header("Phase 3: Merge Event (feel is controlled ONLY by mergeLateralSpeed)")]
+    [Tooltip("Lane center X to merge into.")]
     public float mergeTargetX = 0f;
+
+    [Tooltip("How fast the bot moves sideways during the merge (units/sec).")]
     public float mergeLateralSpeed = 2.0f;
 
+    [Tooltip("Final lead after merge completes (meters ahead).")]
     public float mergeLeadMeters = 12f;
+
+    [Tooltip("Lead required BEFORE the bot starts moving sideways (meters ahead).")]
+    public float mergeStartLeadMeters = 20f;
+
+    [Tooltip("Absolute cap for bot speed during merge phases (m/s).")]
     public float mergeMaxSpeed = 45f;
+
+    [Tooltip("How fast the bot can change speed during merge phases (m/s^2).")]
     public float mergeAccel = 10.0f;
 
-    public float mergeFinishTolX = 0.1f;
-    public float mergeFinishTolZ = 1.0f;
+    [Header("Post-merge behavior")]
+    [Tooltip("If true, after merge completes the bot keeps moving forward independently by COASTING at its current speed (no player speed coupling).")]
+    public bool coastAfterMerge = true;
 
-    [Header("After merge")]
-    public bool keepLeadAfterMerge = true;
+    [Header("Merge visuals (steer/yaw for smoother look)")]
+    [Tooltip("How many degrees the car yaws (steers) at peak during the lateral merge. Typical: 3–8.")]
+    public float mergeSteerYawDegrees = 6f;
+
+    [Tooltip("How quickly the yaw reaches its target (deg/sec). Higher = snappier, lower = smoother.")]
+    public float mergeYawLerpSpeedDegPerSec = 240f;
 
     [Header("Runtime Status (watch these at runtime)")]
     [SerializeField] private bool spawned;
     [SerializeField] private bool mergeTriggered;
+
+    [Header("WheelCollider / Jitter Fix")]
+    public bool disableWheelCollidersUntilSpawn = true;
+    public bool lockYToSpawnHeight = true;
+    public float yLockLerpSpeed = 20f;
 
     // =========================
     // INTERNAL
@@ -62,24 +88,31 @@ public class MoveOnWaypoints : MonoBehaviour
     private enum BotPhase
     {
         NotSpawnedYet,
-        Phase1_HoldAtSpawnX,   // EXACTLY match player speed; no gap controller
-        Phase2_MovingToX,      // gap controller on
-        WaitingForMerge,       // gap controller on
-        Merging,
-        PostMergeLead
+        Phase1_HoldAtSpawnX,
+        Phase2_PreMergeCombined,
+        Merge_OwnLaneOvertake,
+        Merge_Lateral,
+        PostMergeCoast
     }
 
     private BotPhase phase = BotPhase.NotSpawnedYet;
 
     private float currentForwardSpeed = 0f;
     private float phase1HoldUntilTime = 0f;
+    private float spawnedY = 0f;
 
     private Coroutine spawnRoutine;
     private Coroutine mergeRoutine;
 
     private Renderer[] cachedRenderers;
-    private Collider[] cachedColliders;
     private Rigidbody rb;
+    private WheelCollider[] wheelColliders;
+
+    private float mergeLaneHoldX = 0f;
+
+    // used for smooth yaw during Merge_Lateral
+    private float mergeStartX = 0f;
+    private float currentYaw = 0f;
 
     void Awake()
     {
@@ -88,13 +121,15 @@ public class MoveOnWaypoints : MonoBehaviour
             Debug.LogError($"{nameof(MoveOnWaypoints)} requires a Rigidbody on the same GameObject.");
 
         cachedRenderers = GetComponentsInChildren<Renderer>(true);
-        cachedColliders = GetComponentsInChildren<Collider>(true);
+        wheelColliders = GetComponentsInChildren<WheelCollider>(true);
 
         if (rb != null)
         {
             rb.interpolation = RigidbodyInterpolation.Interpolate;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
             rb.useGravity = false;
             rb.isKinematic = true; // scripted motion
+            rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
         }
     }
 
@@ -106,14 +141,21 @@ public class MoveOnWaypoints : MonoBehaviour
 
         ResolvePlayer();
 
-        // Keep object ACTIVE so coroutines run, but hide it and disable collisions.
-        SetVisibleAndCollidable(false);
+        // Keep object ACTIVE so coroutines run. Hide visuals only.
+        SetRenderersEnabled(false);
+
+        // Disable wheel colliders until spawn (prevents suspension popping while hidden)
+        if (disableWheelCollidersUntilSpawn)
+            SetWheelCollidersEnabled(false);
 
         if (rb != null)
         {
             rb.velocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
         }
+
+        currentYaw = spawnYawDegrees;
+        ApplyYawNow(currentYaw);
 
         if (spawnRoutine != null) StopCoroutine(spawnRoutine);
         spawnRoutine = StartCoroutine(DelayedSpawnRoutine());
@@ -128,84 +170,97 @@ public class MoveOnWaypoints : MonoBehaviour
         float dt = Time.fixedDeltaTime;
         Vector3 pos = rb.position;
 
-        float playerSpeed = GetPlayerForwardSpeedAbs();
+        float playerSpeedAbs = GetPlayerForwardSpeedAbs();
+        float playerVzSigned = GetPlayerZVelocitySigned();
+        float dir = (Mathf.Abs(playerVzSigned) > 0.1f) ? Mathf.Sign(playerVzSigned) : 1f; // +1 or -1
+
+        float targetYaw = spawnYawDegrees;
 
         switch (phase)
         {
             case BotPhase.Phase1_HoldAtSpawnX:
             {
-                // Force Phase 1 X and force exact speed match (no gap correction yet)
                 pos.x = phase1SpawnX;
 
-                currentForwardSpeed = playerSpeed; // lock speed to player
-                pos.z += currentForwardSpeed * dt;
+                // Exact speed match in phase 1 hold
+                currentForwardSpeed = playerSpeedAbs;
+                pos.z += dir * currentForwardSpeed * dt;
 
                 if (Time.time >= phase1HoldUntilTime)
-                    phase = BotPhase.Phase2_MovingToX;
+                    phase = BotPhase.Phase2_PreMergeCombined;
 
                 break;
             }
 
-            case BotPhase.Phase2_MovingToX:
+            case BotPhase.Phase2_PreMergeCombined:
             {
-                pos.x = Mathf.MoveTowards(pos.x, phase2TargetX, phase2LateralSpeed * dt);
-                pos = ApplyPreMergeFollowZ(pos, playerSpeed, dt);
-
-                if (Mathf.Abs(pos.x - phase2TargetX) <= phase2FinishTolX)
-                {
-                    pos.x = phase2TargetX;
-                    phase = BotPhase.WaitingForMerge;
-                }
+                pos.x = Mathf.MoveTowards(pos.x, adjacentLaneX, lateralSpeed * dt);
+                pos = ApplyGapBehindFollowZ(pos, playerSpeedAbs, dir, dt);
                 break;
             }
 
-            case BotPhase.WaitingForMerge:
+            case BotPhase.Merge_OwnLaneOvertake:
             {
-                pos.x = phase2TargetX;
-                pos = ApplyPreMergeFollowZ(pos, playerSpeed, dt);
+                // Keep X locked; this phase is ONLY about building enough lead
+                pos.x = mergeLaneHoldX;
+
+                // Build lead up to mergeStartLeadMeters, but do NOT brake in this phase.
+                pos = ApplyLeadBuildOnlyZ(pos, playerSpeedAbs, dir, dt, mergeStartLeadMeters, kp: 0.9f, maxDelta: 8f);
+
+                float startTargetZ = player.position.z + dir * mergeStartLeadMeters;
+                bool aheadEnough = ((pos.z - startTargetZ) * dir >= 0f);
+                if (aheadEnough)
+                    phase = BotPhase.Merge_Lateral;
+
                 break;
             }
 
-            case BotPhase.Merging:
+            case BotPhase.Merge_Lateral:
+            {
+                // Sideways move (this is your "turning only" window)
+                pos.x = Mathf.MoveTowards(pos.x, mergeTargetX, mergeLateralSpeed * dt);
+
+                // COAST FORWARD during the lane change (no player speed coupling = no brake moment)
+                pos.z += dir * currentForwardSpeed * dt;
+
+                // Yaw steer look
+                float totalDx = Mathf.Abs(mergeTargetX - mergeStartX);
+                float remainingDx = Mathf.Abs(pos.x - mergeTargetX);
+
+                float t = 1f;
+                if (totalDx > 0.0001f)
+                    t = Mathf.Clamp01(1f - (remainingDx / totalDx)); // 0->1 across merge
+
+                float ease = Mathf.Sin(t * Mathf.PI);
+                float lateralDir = Mathf.Sign(mergeTargetX - mergeStartX);
+                float yawOffset = lateralDir * mergeSteerYawDegrees * ease;
+                targetYaw = spawnYawDegrees + yawOffset;
+
+                bool doneX = Mathf.Abs(pos.x - mergeTargetX) <= 0.05f;
+                if (doneX)
+                    phase = coastAfterMerge ? BotPhase.PostMergeCoast : BotPhase.Phase2_PreMergeCombined;
+
+                break;
+            }
+
+            case BotPhase.PostMergeCoast:
             {
                 pos.x = Mathf.MoveTowards(pos.x, mergeTargetX, mergeLateralSpeed * dt);
 
-                float targetZ = player.position.z + mergeLeadMeters;
-                float zError = targetZ - pos.z;
-
-                float desiredSpeed = Mathf.Clamp(zError * 0.9f, 0f, mergeMaxSpeed);
-                currentForwardSpeed = Mathf.MoveTowards(currentForwardSpeed, desiredSpeed, mergeAccel * dt);
-                pos.z += currentForwardSpeed * dt;
-
-                bool doneX = Mathf.Abs(pos.x - mergeTargetX) <= mergeFinishTolX;
-                bool doneZ = (pos.z >= targetZ) || Mathf.Abs(pos.z - targetZ) <= mergeFinishTolZ;
-
-                if (doneX && doneZ)
-                {
-                    pos.x = mergeTargetX;
-                    if (pos.z < targetZ) pos.z = targetZ;
-
-                    phase = keepLeadAfterMerge ? BotPhase.PostMergeLead : BotPhase.WaitingForMerge;
-                }
-                break;
-            }
-
-            case BotPhase.PostMergeLead:
-            {
-                pos.x = mergeTargetX;
-
-                float targetZ = player.position.z + mergeLeadMeters;
-                float zError = targetZ - pos.z;
-
-                float desiredSpeed = Mathf.Clamp(zError * 0.9f, 0f, mergeMaxSpeed);
-                currentForwardSpeed = Mathf.MoveTowards(currentForwardSpeed, desiredSpeed, mergeAccel * dt);
-                pos.z += currentForwardSpeed * dt;
+                // Independent coast
+                pos.z += dir * currentForwardSpeed * dt;
 
                 break;
             }
         }
 
+        if (lockYToSpawnHeight)
+            pos.y = Mathf.Lerp(pos.y, spawnedY, yLockLerpSpeed * dt);
+
         rb.MovePosition(pos);
+
+        currentYaw = Mathf.MoveTowardsAngle(currentYaw, targetYaw, mergeYawLerpSpeedDegPerSec * dt);
+        ApplyYawNow(currentYaw);
     }
 
     // =========================
@@ -216,7 +271,6 @@ public class MoveOnWaypoints : MonoBehaviour
         phase = BotPhase.NotSpawnedYet;
         yield return new WaitForSeconds(spawnDelaySeconds);
 
-        // Wait briefly for player to exist (tag-based)
         float maxWaitForPlayer = 3f;
         float t = 0f;
         while (player == null && t < maxWaitForPlayer)
@@ -233,23 +287,27 @@ public class MoveOnWaypoints : MonoBehaviour
     {
         ResolvePlayer();
 
+        float playerVzSigned = GetPlayerZVelocitySigned();
+        float dir = (Mathf.Abs(playerVzSigned) > 0.1f) ? Mathf.Sign(playerVzSigned) : 1f;
+
         Vector3 pos = rb.position;
         pos.x = phase1SpawnX;
 
         if (player != null)
-            pos.z = player.position.z - preMergeGapBehindMeters;
-
-        float playerSpeed = GetPlayerForwardSpeedAbs();
-        currentForwardSpeed = playerSpeed;
+            pos.z = player.position.z - dir * gapBehindMeters;
 
         rb.MoveRotation(Quaternion.Euler(0f, spawnYawDegrees, 0f));
 
-        // Instant snap to position + match speed
         rb.position = pos;
-        rb.velocity = new Vector3(0f, 0f, currentForwardSpeed);
+        rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
 
-        SetVisibleAndCollidable(true);
+        spawnedY = rb.position.y;
+
+        SetRenderersEnabled(true);
+
+        if (disableWheelCollidersUntilSpawn)
+            SetWheelCollidersEnabled(true);
 
         spawned = true;
         mergeTriggered = false;
@@ -257,28 +315,54 @@ public class MoveOnWaypoints : MonoBehaviour
         phase = BotPhase.Phase1_HoldAtSpawnX;
         phase1HoldUntilTime = Time.time + Mathf.Max(0f, phase1HoldSeconds);
 
+        // Seed speed so it doesn't "drop back"
+        currentForwardSpeed = GetPlayerForwardSpeedAbs();
+
+        currentYaw = spawnYawDegrees;
+        ApplyYawNow(currentYaw);
+
         BeginMergeTimerAlways();
     }
 
     // =========================
-    // PRE-MERGE Z FOLLOW (player speed baseline + gap correction)
+    // PHASE 2 GAP FOLLOW (behind player)
     // =========================
-    private Vector3 ApplyPreMergeFollowZ(Vector3 pos, float playerSpeed, float dt)
+    private Vector3 ApplyGapBehindFollowZ(Vector3 pos, float playerSpeedAbs, float dir, float dt)
     {
-        float targetZ = player.position.z - preMergeGapBehindMeters;
-        float zError = targetZ - pos.z;
+        float targetZ = player.position.z - dir * gapBehindMeters;
+        float zErrorAlongDir = (targetZ - pos.z) * dir;
 
-        float correction = Mathf.Clamp(zError * gapKp, -maxSpeedDeltaFromPlayer, maxSpeedDeltaFromPlayer);
-        float desiredSpeed = playerSpeed + correction;
+        float correction = Mathf.Clamp(zErrorAlongDir * gapKp, -maxSpeedDeltaFromPlayer, maxSpeedDeltaFromPlayer);
+        float desiredSpeed = playerSpeedAbs + correction;
 
-        float actualGap = player.position.z - pos.z;
-        if (actualGap < minGapMeters)
+        float actualGapAlongDir = (player.position.z - pos.z) * dir;
+        if (actualGapAlongDir < minGapMeters)
             desiredSpeed = 0f;
 
         desiredSpeed = Mathf.Clamp(desiredSpeed, 0f, maxSpeed);
 
         currentForwardSpeed = Mathf.MoveTowards(currentForwardSpeed, desiredSpeed, accel * dt);
-        pos.z += currentForwardSpeed * dt;
+        pos.z += dir * currentForwardSpeed * dt;
+
+        return pos;
+    }
+
+    // =========================
+    // LEAD BUILD ONLY (Merge_OwnLaneOvertake)
+    // =========================
+    private Vector3 ApplyLeadBuildOnlyZ(Vector3 pos, float playerSpeedAbs, float dir, float dt, float desiredLeadMeters, float kp, float maxDelta)
+    {
+        float targetZ = player.position.z + dir * desiredLeadMeters;
+        float zErrorAlongDir = (targetZ - pos.z) * dir;
+
+        // Only allow positive correction (speed up). Never brake here.
+        float correction = Mathf.Clamp(zErrorAlongDir * kp, 0f, maxDelta);
+
+        float desiredSpeed = playerSpeedAbs + correction;
+        desiredSpeed = Mathf.Clamp(desiredSpeed, 0f, mergeMaxSpeed);
+
+        currentForwardSpeed = Mathf.MoveTowards(currentForwardSpeed, desiredSpeed, mergeAccel * dt);
+        pos.z += dir * currentForwardSpeed * dt;
 
         return pos;
     }
@@ -308,8 +392,12 @@ public class MoveOnWaypoints : MonoBehaviour
             mergeRoutine = null;
         }
 
-        mergeTriggered = true; // ✅ runtime checkmark
-        phase = BotPhase.Merging;
+        mergeTriggered = true;
+
+        mergeLaneHoldX = rb.position.x;
+        mergeStartX = mergeLaneHoldX;
+
+        phase = BotPhase.Merge_OwnLaneOvertake;
     }
 
     // =========================
@@ -322,22 +410,34 @@ public class MoveOnWaypoints : MonoBehaviour
         Rigidbody prb = player.GetComponent<Rigidbody>();
         if (prb == null) return 0f;
 
-        // Road is straight in world Z, so just use absolute Z speed
         return Mathf.Abs(prb.velocity.z);
     }
 
-    // =========================
-    // VISIBILITY / COLLISION
-    // =========================
-    private void SetVisibleAndCollidable(bool enabled)
+    private float GetPlayerZVelocitySigned()
     {
-        if (cachedRenderers != null)
-            for (int i = 0; i < cachedRenderers.Length; i++)
-                cachedRenderers[i].enabled = enabled;
+        if (player == null) return 0f;
 
-        if (cachedColliders != null)
-            for (int i = 0; i < cachedColliders.Length; i++)
-                cachedColliders[i].enabled = enabled;
+        Rigidbody prb = player.GetComponent<Rigidbody>();
+        if (prb == null) return 0f;
+
+        return prb.velocity.z;
+    }
+
+    // =========================
+    // VISUALS / WHEELS
+    // =========================
+    private void SetRenderersEnabled(bool enabled)
+    {
+        if (cachedRenderers == null) return;
+        for (int i = 0; i < cachedRenderers.Length; i++)
+            cachedRenderers[i].enabled = enabled;
+    }
+
+    private void SetWheelCollidersEnabled(bool enabled)
+    {
+        if (wheelColliders == null) return;
+        for (int i = 0; i < wheelColliders.Length; i++)
+            wheelColliders[i].enabled = enabled;
     }
 
     private void ResolvePlayer()
@@ -347,5 +447,11 @@ public class MoveOnWaypoints : MonoBehaviour
 
         GameObject p = GameObject.FindGameObjectWithTag(playerTag);
         if (p != null) player = p.transform;
+    }
+
+    private void ApplyYawNow(float yawDegrees)
+    {
+        if (rb == null) return;
+        rb.MoveRotation(Quaternion.Euler(0f, yawDegrees, 0f));
     }
 }
