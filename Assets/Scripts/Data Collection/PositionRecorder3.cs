@@ -8,6 +8,9 @@ public class PositionRecorder3 : MonoBehaviour
     public GameObject target;
     public float recordInterval = 0.1f;
 
+    [Header("Lane Center (assign in Inspector)")]
+    public Transform laneCenter; // drag your invisible centerline GameObject here
+
     private List<string> positionRows = new List<string>();
     private float timer = 0f;
     private float trialStartTime = 0f;
@@ -28,7 +31,7 @@ public class PositionRecorder3 : MonoBehaviour
 
     private const string CsvHeader =
         "ParticipantID,Block,TrialIndex,TrialType,Expectancy,SignalColor,MergeSide," +
-        "TimeAbsolute,TimeRelative,X,Y,Z,SpeedMPH";
+        "TimeAbsolute,TimeRelative,X,Y,Z,LaneDeviation,SpeedMPH";
 
     void Start()
     {
@@ -37,7 +40,7 @@ public class PositionRecorder3 : MonoBehaviour
         // Pull metadata from ExperimentController
         if (ExperimentController.Instance != null && ExperimentController.Instance.experimentRunning)
         {
-            participantID = ExperimentController.Instance.participantID; 
+            participantID = ExperimentController.Instance.participantID;
             blockLabel = ExperimentController.Instance.currentBlock.ToString(); // Day/Night
             trialIndex = ExperimentController.Instance.currentTrialIndex;
 
@@ -76,6 +79,13 @@ public class PositionRecorder3 : MonoBehaviour
             float timeAbsolute = Time.time;
             float timeRelative = Time.time - trialStartTime;
 
+            // Compute lane deviation: local X offset relative to lane center (0 = centered)
+            float laneDeviation = 0f;
+            if (laneCenter != null)
+            {
+                laneDeviation = laneCenter.InverseTransformPoint(target.transform.position).x;
+            }
+
             string row =
                 $"{participantID}," +
                 $"{blockLabel}," +
@@ -87,6 +97,7 @@ public class PositionRecorder3 : MonoBehaviour
                 $"{timeAbsolute:F2}," +
                 $"{timeRelative:F2}," +
                 $"{pos.x:F4},{pos.y:F4},{pos.z:F4}," +
+                $"{laneDeviation:F4}," +
                 $"{speedMPH:F2}";
 
             positionRows.Add(row);

@@ -1,50 +1,65 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class MWS : MonoBehaviour
-
 {
-    // Reference to tires
     [SerializeField] WheelCollider FL;
     [SerializeField] WheelCollider FR;
     [SerializeField] WheelCollider RL;
     [SerializeField] WheelCollider RR;
 
-    // public float values
     public float acceleration = 500f;
     public float breakingForce = 250f;
     public float maxTurnAngle = 15f;
 
-    // private float values
-    private float currentAcceleration = 0f;
-    private float currentBreakForce = 0f;
-    private float currentTurnAngle = 0f;
+    [Header("DEBUG INPUT")]
+    [SerializeField] float verticalInput;
+    [SerializeField] float horizontalInput;
 
-    private void FixedUpdate()
+    float currentAcceleration = 0f;
+    float currentBreakForce = 0f;
+    float currentTurnAngle = 0f;
+
+    void Update()
     {
-        currentAcceleration = acceleration * Input.GetAxis("Vertical");
+        verticalInput = Input.GetAxis("Vertical");
+        horizontalInput = Input.GetAxis("Horizontal");
+    }
 
-        // Apply Braking force with Input.
-        if (Input.GetKey(KeyCode.Space))
-            currentBreakForce = breakingForce;
-        else 
-            currentBreakForce = 0f;
+    void FixedUpdate()
+    {
+        currentAcceleration = acceleration * verticalInput;
+        currentBreakForce = Input.GetKey(KeyCode.Space) ? breakingForce : 0f;
+        currentTurnAngle = maxTurnAngle * horizontalInput;
 
-        // AWD torque
-        FL.motorTorque = currentAcceleration;
-        FR.motorTorque = currentAcceleration;
-        RL.motorTorque = currentAcceleration;
-        RR.motorTorque = currentAcceleration;
-        // Braking
-        FL.brakeTorque = currentBreakForce;
-        FR.brakeTorque = currentBreakForce;
-        RL.brakeTorque = currentBreakForce;
-        RR.brakeTorque = currentBreakForce;
+        FL.motorTorque = FR.motorTorque = RL.motorTorque = RR.motorTorque = currentAcceleration;
+        FL.brakeTorque = FR.brakeTorque = RL.brakeTorque = RR.brakeTorque = currentBreakForce;
 
-        // Turning FL and FR tire
-        currentTurnAngle = maxTurnAngle * Input.GetAxis("Horizontal");
         FL.steerAngle = currentTurnAngle;
         FR.steerAngle = currentTurnAngle;
+
+        // ---- DEBUG ONCE PER SECOND ----
+        if (Time.frameCount % 60 == 0)
+        {
+            DebugWheel("FL", FL);
+            DebugWheel("FR", FR);
+            DebugWheel("RL", RL);
+            DebugWheel("RR", RR);
+
+            var rb = GetComponentInParent<Rigidbody>() ?? GetComponent<Rigidbody>();
+            if (rb)
+            {
+                Debug.Log($"RB: vel={rb.velocity.magnitude:F2} kinematic={rb.isKinematic} constraints={rb.constraints}");
+            }
+        }
+    }
+
+    void DebugWheel(string name, WheelCollider wc)
+    {
+        if (!wc) { Debug.Log($"{name}: MISSING"); return; }
+
+        WheelHit hit;
+        bool grounded = wc.GetGroundHit(out hit);
+
+        Debug.Log($"{name}: grounded={grounded} rpm={wc.rpm:F1} torque={wc.motorTorque:F1} brake={wc.brakeTorque:F1}");
     }
 }

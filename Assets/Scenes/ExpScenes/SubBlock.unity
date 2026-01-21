@@ -1609,27 +1609,47 @@ MonoBehaviour:
   participantIdInput: {fileID: 1978454419}
   blockDropdown: {fileID: 1046661492}
   practiceScenes:
-  - E_Red_Left
-  - U_Red_Right
-  - E_Amb_Left
-  - U_Amb_Right
+  - sceneName: E_Amb_L
+    sceneAsset: {fileID: 102900000, guid: 1eee6d5c61708784aa02d41664caea6d, type: 3}
+  - sceneName: E_Red_R
+    sceneAsset: {fileID: 102900000, guid: e1a6b72b530a0724889f0498c82cb31d, type: 3}
+  - sceneName: U_Amb_R
+    sceneAsset: {fileID: 102900000, guid: 9a396fe2ae4c37142a0a83269d27fc6c, type: 3}
+  - sceneName: U_Red_L
+    sceneAsset: {fileID: 102900000, guid: 58684f06b0568df438356cfa70a7c635, type: 3}
   mainScenes:
-  - E_Amb_Left
-  - E_Amb_Left
-  - E_Amb_Right
-  - E_Amb_Right
-  - E_Red_Left
-  - E_Red_Left
-  - E_Red_Right
-  - E_Red_Right
-  - U_Amb_Left
-  - U_Amb_Left
-  - U_Amb_Right
-  - U_Amb_Right
-  - U_Red_Left
-  - U_Red_Left
-  - U_Red_Right
-  - U_Red_Right
+  - sceneName: E_Amb_L
+    sceneAsset: {fileID: 102900000, guid: 1eee6d5c61708784aa02d41664caea6d, type: 3}
+  - sceneName: E_Amb_L
+    sceneAsset: {fileID: 102900000, guid: 1eee6d5c61708784aa02d41664caea6d, type: 3}
+  - sceneName: E_Amb_R
+    sceneAsset: {fileID: 102900000, guid: cbb53fd008f37374d97bce677145adbc, type: 3}
+  - sceneName: E_Amb_R
+    sceneAsset: {fileID: 102900000, guid: cbb53fd008f37374d97bce677145adbc, type: 3}
+  - sceneName: E_Red_L
+    sceneAsset: {fileID: 102900000, guid: a8166453b64d1164e91db740220bfd88, type: 3}
+  - sceneName: E_Red_L
+    sceneAsset: {fileID: 102900000, guid: a8166453b64d1164e91db740220bfd88, type: 3}
+  - sceneName: E_Red_R
+    sceneAsset: {fileID: 102900000, guid: e1a6b72b530a0724889f0498c82cb31d, type: 3}
+  - sceneName: E_Red_R
+    sceneAsset: {fileID: 102900000, guid: e1a6b72b530a0724889f0498c82cb31d, type: 3}
+  - sceneName: U_Amb_L
+    sceneAsset: {fileID: 102900000, guid: a6140617aca82724b9a7b5eb05f048c9, type: 3}
+  - sceneName: U_Amb_L
+    sceneAsset: {fileID: 102900000, guid: a6140617aca82724b9a7b5eb05f048c9, type: 3}
+  - sceneName: U_Amb_R
+    sceneAsset: {fileID: 102900000, guid: 9a396fe2ae4c37142a0a83269d27fc6c, type: 3}
+  - sceneName: U_Amb_R
+    sceneAsset: {fileID: 102900000, guid: 9a396fe2ae4c37142a0a83269d27fc6c, type: 3}
+  - sceneName: U_Red_L
+    sceneAsset: {fileID: 102900000, guid: 58684f06b0568df438356cfa70a7c635, type: 3}
+  - sceneName: U_Red_L
+    sceneAsset: {fileID: 102900000, guid: 58684f06b0568df438356cfa70a7c635, type: 3}
+  - sceneName: U_Red_R
+    sceneAsset: {fileID: 102900000, guid: 4fa9902aa0812ba41a5974f4379d0a4e, type: 3}
+  - sceneName: U_Red_R
+    sceneAsset: {fileID: 102900000, guid: 4fa9902aa0812ba41a5974f4379d0a4e, type: 3}
   participantID: 
   currentBlock: 0
   currentTrialIndex: -1

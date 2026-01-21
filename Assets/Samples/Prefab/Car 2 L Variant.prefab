@@ -244,6 +244,14 @@ PrefabInstance:
       value: Car 2 L Variant
       objectReference: {fileID: 0}
     - target: {fileID: 3017340581858648927, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
+      propertyPath: phase1SpawnX
+      value: -10
+      objectReference: {fileID: 0}
+    - target: {fileID: 3017340581858648927, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
+      propertyPath: adjacentLaneX
+      value: -5.27
+      objectReference: {fileID: 0}
+    - target: {fileID: 3017340581858648927, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
       propertyPath: postMergeDecel
       value: 5
       objectReference: {fileID: 0}
@@ -391,7 +399,8 @@ PrefabInstance:
       propertyPath: m_RootOrder
       value: 0
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 792523889046018717, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
   m_SourcePrefab: {fileID: 100100000, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
 --- !u!1 &798005447500897540 stripped
 GameObject:

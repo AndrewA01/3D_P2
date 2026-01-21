@@ -175,6 +175,14 @@ PrefabInstance:
       propertyPath: m_VersionIndex
       value: 1502
       objectReference: {fileID: 0}
+    - target: {fileID: 7370837915850213134, guid: 35743e658758b3246b74d0a0c514f7ec, type: 3}
+      propertyPath: phase1SpawnX
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: 7370837915850213134, guid: 35743e658758b3246b74d0a0c514f7ec, type: 3}
+      propertyPath: adjacentLaneX
+      value: 5.27
+      objectReference: {fileID: 0}
     - target: {fileID: 7370837915850213135, guid: 35743e658758b3246b74d0a0c514f7ec, type: 3}
       propertyPath: m_Name
       value: Car 2 R Variant

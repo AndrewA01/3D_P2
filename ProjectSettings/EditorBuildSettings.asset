@@ -9,27 +9,50 @@ EditorBuildSettings:
     path: Assets/Scenes/ExpScenes/SubBlock.unity
     guid: f92b5ad5154837b4fa2119f47bd166b9
   - enabled: 1
-    path: Assets/Scenes/ExpScenes/E_Amb_Left.unity
+    path: Assets/Scenes/ExpScenes/E_Amb_L.unity
     guid: 1eee6d5c61708784aa02d41664caea6d
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/ExpScenes/E_Amb_Right.unity
     guid: 14909f19572e5dd40b3a6f472bd2e072
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/ExpScenes/E_Red_Left.unity
     guid: 4908b1f629299f14ebae32d59a2a4ddd
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/ExpScenes/E_Red_Right.unity
     guid: 9a8ae6ea91ec4794e98964203d1dc8a7
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/ExpScenes/U_Amb_Left.unity
     guid: 2e4bc91f891b9d146af290c02c5371e7
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/ExpScenes/U_Amb_Right.unity
     guid: 0ad87862f58775547b71f83fe7235042
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/ExpScenes/U_Red_Left.unity
     guid: 9d9a6466a188b51459c28ccb9e7a690d
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/ExpScenes/U_Red_Right.unity
     guid: 7492b22747c738b40b52e5e3da01a427
-  m_configObjects: {}
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/E_Amb_R.unity
+    guid: cbb53fd008f37374d97bce677145adbc
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/E_Red_L.unity
+    guid: a8166453b64d1164e91db740220bfd88
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/E_Red_R.unity
+    guid: e1a6b72b530a0724889f0498c82cb31d
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/U_Amb_L.unity
+    guid: a6140617aca82724b9a7b5eb05f048c9
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/U_Amb_R.unity
+    guid: 9a396fe2ae4c37142a0a83269d27fc6c
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/U_Red_L.unity
+    guid: 58684f06b0568df438356cfa70a7c635
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/U_Red_R.unity
+    guid: 4fa9902aa0812ba41a5974f4379d0a4e
+  m_configObjects:
+    com.unity.addressableassets: {fileID: 11400000, guid: f0027d1fa4a445441851f6c99058de79, type: 2}
+    com.unity.localization.settings: {fileID: 11400000, guid: 96420ae6fbeff4144b5ceb87c2ddd3f1, type: 2}
