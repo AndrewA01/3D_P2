@@ -37,7 +37,7 @@ public class MoveOnWaypoints : MonoBehaviour
     [Tooltip("How fast the bot can change speed (m/s^2).")]
     public float accel = 8.0f;
 
-    [Tooltip("Clamp how much faster/slower than player the bot can go while correcting gap (m/s).")]
+    [Tooltip("Clamp how much faster/slower than player the bot can go while correcting gap.")]
     public float maxSpeedDeltaFromPlayer = 10f;
 
     [Tooltip("Absolute cap for bot speed in Phase 2 (m/s).")]
@@ -50,7 +50,7 @@ public class MoveOnWaypoints : MonoBehaviour
     [Tooltip("How fast the bot moves sideways during the merge (units/sec).")]
     public float mergeLateralSpeed = 2.0f;
 
-    [Tooltip("Final lead after merge completes (meters ahead). (Note: not used by this script currently)")]
+    [Tooltip("Final lead after merge completes (meters ahead).")]
     public float mergeLeadMeters = 12f;
 
     [Tooltip("Lead required BEFORE the bot starts moving sideways (meters ahead).")]
@@ -62,18 +62,9 @@ public class MoveOnWaypoints : MonoBehaviour
     [Tooltip("How fast the bot can change speed during merge phases (m/s^2).")]
     public float mergeAccel = 10.0f;
 
-    [Header("Post-merge behavior (stay in mergeTargetX lane)")]
+    [Header("Post-merge behavior")]
     [Tooltip("If true, after merge completes the bot keeps moving forward independently by COASTING at its current speed (no player speed coupling).")]
     public bool coastAfterMerge = true;
-
-    [Tooltip("Post-merge target speed in MPH (deceleration-only; it will NOT speed up to reach this).")]
-    public float postMergeTargetSpeedMph = 35f;
-
-    [Tooltip("How fast the bot slows down after merge, in MPH per second. 0 = no slowing.")]
-    public float postMergeDecelMphPerSec = 10f;
-
-    [Tooltip("If true, X is locked exactly to mergeTargetX after merge.")]
-    public bool lockLaneXAfterMerge = true;
 
     [Header("Merge visuals (steer/yaw for smoother look)")]
     [Tooltip("How many degrees the car yaws (steers) at peak during the lateral merge. Typical: 3–8.")]
@@ -106,7 +97,7 @@ public class MoveOnWaypoints : MonoBehaviour
 
     private BotPhase phase = BotPhase.NotSpawnedYet;
 
-    private float currentForwardSpeed = 0f; // m/s
+    private float currentForwardSpeed = 0f;
     private float phase1HoldUntilTime = 0f;
     private float spawnedY = 0f;
 
@@ -122,8 +113,6 @@ public class MoveOnWaypoints : MonoBehaviour
     // used for smooth yaw during Merge_Lateral
     private float mergeStartX = 0f;
     private float currentYaw = 0f;
-
-    private const float MPH_TO_MPS = 0.44704f;
 
     void Awake()
     {
@@ -181,8 +170,8 @@ public class MoveOnWaypoints : MonoBehaviour
         float dt = Time.fixedDeltaTime;
         Vector3 pos = rb.position;
 
-        float playerSpeedAbs = GetPlayerForwardSpeedAbs();   // m/s
-        float playerVzSigned = GetPlayerZVelocitySigned();   // m/s
+        float playerSpeedAbs = GetPlayerForwardSpeedAbs();
+        float playerVzSigned = GetPlayerZVelocitySigned();
         float dir = (Mathf.Abs(playerVzSigned) > 0.1f) ? Mathf.Sign(playerVzSigned) : 1f; // +1 or -1
 
         float targetYaw = spawnYawDegrees;
@@ -228,10 +217,10 @@ public class MoveOnWaypoints : MonoBehaviour
 
             case BotPhase.Merge_Lateral:
             {
-                // Sideways move
+                // Sideways move (this is your "turning only" window)
                 pos.x = Mathf.MoveTowards(pos.x, mergeTargetX, mergeLateralSpeed * dt);
 
-                // Coast forward during lane change (no player speed coupling)
+                // COAST FORWARD during the lane change (no player speed coupling = no brake moment)
                 pos.z += dir * currentForwardSpeed * dt;
 
                 // Yaw steer look
@@ -249,32 +238,16 @@ public class MoveOnWaypoints : MonoBehaviour
 
                 bool doneX = Mathf.Abs(pos.x - mergeTargetX) <= 0.05f;
                 if (doneX)
-                {
-                    // After merging, ALWAYS go to PostMergeCoast so it stays in mergeTargetX lane
-                    phase = BotPhase.PostMergeCoast;
-                }
+                    phase = coastAfterMerge ? BotPhase.PostMergeCoast : BotPhase.Phase2_PreMergeCombined;
 
                 break;
             }
 
             case BotPhase.PostMergeCoast:
             {
-                // Stay in the merged lane (lane 0 / mergeTargetX)
-                if (lockLaneXAfterMerge)
-                    pos.x = mergeTargetX;
-                else
-                    pos.x = Mathf.MoveTowards(pos.x, mergeTargetX, mergeLateralSpeed * dt);
+                pos.x = Mathf.MoveTowards(pos.x, mergeTargetX, mergeLateralSpeed * dt);
 
-                // Independent forward motion, with deceleration-only (MPH inputs converted to m/s)
-                float targetMps = Mathf.Max(0f, postMergeTargetSpeedMph) * MPH_TO_MPS;
-                float decelMps2 = Mathf.Max(0f, postMergeDecelMphPerSec) * MPH_TO_MPS;
-
-                if (decelMps2 > 0f && currentForwardSpeed > targetMps)
-                {
-                    currentForwardSpeed = Mathf.Max(targetMps, currentForwardSpeed - decelMps2 * dt);
-                }
-                // If already <= target, DO NOTHING (never accelerates)
-
+                // Independent coast
                 pos.z += dir * currentForwardSpeed * dt;
 
                 break;
@@ -411,7 +384,6 @@ public class MoveOnWaypoints : MonoBehaviour
         TriggerMergeNow();
     }
 
-    // Runtime merge event trigger (kept)
     public void TriggerMergeNow()
     {
         if (mergeRoutine != null)

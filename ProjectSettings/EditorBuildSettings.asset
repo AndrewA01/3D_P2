@@ -32,5 +32,4 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/ExpScenes/U_Red_Right.unity
     guid: 7492b22747c738b40b52e5e3da01a427
-  m_configObjects:
-    com.unity.addressableassets: {fileID: 11400000, guid: f0027d1fa4a445441851f6c99058de79, type: 2}
+  m_configObjects: {}
