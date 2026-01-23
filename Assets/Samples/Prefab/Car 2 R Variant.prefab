@@ -183,6 +183,10 @@ PrefabInstance:
       propertyPath: adjacentLaneX
       value: 5.27
       objectReference: {fileID: 0}
+    - target: {fileID: 7370837915850213134, guid: 35743e658758b3246b74d0a0c514f7ec, type: 3}
+      propertyPath: turnSignalBlinker
+      value: 
+      objectReference: {fileID: 792523889046018717}
     - target: {fileID: 7370837915850213135, guid: 35743e658758b3246b74d0a0c514f7ec, type: 3}
       propertyPath: m_Name
       value: Car 2 R Variant
@@ -422,3 +426,4 @@ MonoBehaviour:
   onMaterial: {fileID: 2100000, guid: 7ac30b3ea32b1fc46b56c834ef2cff10, type: 2}
   offMaterial: {fileID: 2100000, guid: 7be193bfe2852b94ba8b07a2e2ec8cab, type: 2}
   flashesPerSecond: 1.5
+  isBlinking: 0

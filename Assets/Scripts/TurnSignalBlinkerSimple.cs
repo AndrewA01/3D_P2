@@ -16,6 +16,10 @@ public class TurnSignalBlinkerSimple : MonoBehaviour
     [Tooltip("How many full flashes per second (ON + OFF = 1 flash).")]
     public float flashesPerSecond = 1.5f;
 
+    [Header("Runtime")]
+    [Tooltip("Starts false. Another script should call OnMergeStarted() / OnMergeEnded().")]
+    [SerializeField] private bool isBlinking = false;
+
     private Renderer[] renderers;
     private bool lastOnState = false;
 
@@ -47,12 +51,38 @@ public class TurnSignalBlinkerSimple : MonoBehaviour
 
     void Update()
     {
-        if (renderers == null || flashesPerSecond <= 0f) return;
+        if (renderers == null) return;
+
+        if (!isBlinking)
+        {
+            SetState(false);
+            return;
+        }
+
+        if (flashesPerSecond <= 0f)
+        {
+            SetState(false);
+            return;
+        }
 
         float period = 1f / flashesPerSecond;
         bool on = Mathf.Repeat(Time.time, period) < period * 0.5f;
-
         SetState(on);
+    }
+
+    // Call this when merge event starts (bot begins accelerating to reach start lead)
+    public void OnMergeStarted()
+    {
+        isBlinking = true;
+        // Force immediate visible ON so you don't miss it due to timing
+        SetState(true, force: true);
+    }
+
+    // Call this when merge ends (or when you want to stop blinking)
+    public void OnMergeEnded()
+    {
+        isBlinking = false;
+        SetState(false, force: true);
     }
 
     private void SetState(bool on, bool force = false)
@@ -67,8 +97,6 @@ public class TurnSignalBlinkerSimple : MonoBehaviour
             Renderer r = renderers[i];
             if (r == null) continue;
 
-            // Apply to ALL material slots on this renderer
-            // (so it works even if the mesh has multiple sub-materials)
             var slots = r.sharedMaterials;
             if (slots == null || slots.Length == 0) continue;
 

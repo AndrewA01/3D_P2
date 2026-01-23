@@ -264,6 +264,10 @@ PrefabInstance:
       value: 12
       objectReference: {fileID: 0}
     - target: {fileID: 3017340581858648927, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
+      propertyPath: turnSignalBlinker
+      value: 
+      objectReference: {fileID: 3634756717036463774}
+    - target: {fileID: 3017340581858648927, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
       propertyPath: mergeStartLeadMeters
       value: 12
       objectReference: {fileID: 0}
@@ -423,6 +427,7 @@ MonoBehaviour:
   onMaterial: {fileID: 2100000, guid: 7ac30b3ea32b1fc46b56c834ef2cff10, type: 2}
   offMaterial: {fileID: 2100000, guid: 7be193bfe2852b94ba8b07a2e2ec8cab, type: 2}
   flashesPerSecond: 1.5
+  isBlinking: 0
 --- !u!1 &5670274005673156938 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3017340580671348596, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
@@ -444,3 +449,4 @@ MonoBehaviour:
   onMaterial: {fileID: 2100000, guid: 7ac30b3ea32b1fc46b56c834ef2cff10, type: 2}
   offMaterial: {fileID: 0}
   flashesPerSecond: 1.5
+  isBlinking: 0
