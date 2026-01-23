@@ -53,6 +53,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/ExpScenes/U_Red_R.unity
     guid: 4fa9902aa0812ba41a5974f4379d0a4e
+  - enabled: 1
+    path: Assets/Scenes/ExpScenes/PostTrialQuestion.unity
+    guid: 671903ce5f793c442a6e7dea4dac7d0e
   m_configObjects:
     com.unity.addressableassets: {fileID: 11400000, guid: f0027d1fa4a445441851f6c99058de79, type: 2}
     com.unity.localization.settings: {fileID: 11400000, guid: 96420ae6fbeff4144b5ceb87c2ddd3f1, type: 2}
