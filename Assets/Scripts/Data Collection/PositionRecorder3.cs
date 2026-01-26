@@ -2,11 +2,32 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
+/// <summary>
+/// PositionRecorder3 (Position Logger 3)
+/// - Records per-sample kinematics to CSV
+/// - Persists across scenes (DontDestroyOnLoad) so post-trial question can be answered before saving
+/// - Adds merge-event timing columns:
+///     MergeCueTimeRel
+///     DriverResponseTimeRel
+///     ReactionTime
+///     ResponseType (Brake / Steer / Both / None)
+///
+/// ReactionTime definition:
+///   ReactionTime = DriverResponseTimeRel - MergeCueTimeRel
+///
+/// How to use for event timing:
+/// 1) When adjacent merging vehicle begins lateral movement (and turn signal cue), call:
+///      PositionRecorder3.Current.MarkMergeCue();
+/// 2) Driver response onset can be detected automatically via input axis thresholds (optional),
+///    OR you can call:
+///      PositionRecorder3.Current.MarkDriverBrake();
+///      PositionRecorder3.Current.MarkDriverSteer();
+/// </summary>
 public class PositionRecorder3 : MonoBehaviour
 {
     public static PositionRecorder3 Current { get; private set; }
 
-    [Header("Target")]
+    [Header("Target (Ego Vehicle)")]
     public GameObject target;
     public float recordInterval = 0.1f;
 
@@ -16,6 +37,22 @@ public class PositionRecorder3 : MonoBehaviour
     [Header("Output Folder (relative to project)")]
     public string relativeFolderPath = "Assets/CSVCollection/NewPL";
 
+    [Header("Optional: Auto-detect driver response from Input axes")]
+    [Tooltip("If enabled, logger will mark the first driver response using input axis thresholds.")]
+    public bool autoDetectResponseFromInput = false;
+
+    [Tooltip("Input axis name for steering (e.g., Horizontal). Leave blank to disable steering auto-detect.")]
+    public string steeringAxisName = "Horizontal";
+
+    [Tooltip("Input axis name for braking (e.g., Brake). Leave blank to disable brake auto-detect.")]
+    public string brakeAxisName = "Brake";
+
+    [Tooltip("Absolute steering axis must exceed this to count as response.")]
+    public float steeringThreshold = 0.15f;
+
+    [Tooltip("Brake axis must exceed this to count as response.")]
+    public float brakeThreshold = 0.10f;
+
     private Rigidbody targetRigidbody;
     private float timer;
     private float trialStartTime;
@@ -23,7 +60,7 @@ public class PositionRecorder3 : MonoBehaviour
     private bool recordingEnabled = true;
     private bool saved = false;
 
-    // ===== Metadata from ExperimentController =====
+    // ===== Trial metadata (from ExperimentController) =====
     private string participantID = "NA";
     private string blockLabel = "NA";
     private int trialIndex = -1;
@@ -33,19 +70,30 @@ public class PositionRecorder3 : MonoBehaviour
     private string signalColorLabel = "Unknown";
     private string mergeSideLabel = "Unknown";
 
-    // ===== Trial end =====
+    // ===== Trial-end fields (optional but useful) =====
     private bool trialEnded = false;
     private string trialEndReason = "";
     private float trialEndTimeAbs = -1f;
     private float trialEndTimeRel = -1f;
 
-    // ===== Survey =====
+    // ===== Survey fields (set in post-trial question scene) =====
     private string surveyQuestion = "";
     private string surveyResponse = "";
     private float surveyRT = -1f;
 
-    // NEW: Color identification accuracy
-    private int colorIDAccuracy = -1; // 1 = correct, 0 = incorrect
+    // ===== Merge cue + driver response timing =====
+    private bool mergeCueMarked = false;
+    private float mergeCueTimeRel = -1f;
+
+    private bool responseMarked = false;
+    private float driverResponseTimeRel = -1f;
+
+    // These track the earliest input type if both happen nearly together
+    private bool brakeMarked = false;
+    private bool steerMarked = false;
+
+    private string responseType = "None"; // Brake / Steer / Both / None
+    private float reactionTime = -1f;     // DriverResponseTimeRel - MergeCueTimeRel (if both exist)
 
     private struct Sample
     {
@@ -62,7 +110,8 @@ public class PositionRecorder3 : MonoBehaviour
         "ParticipantID,Block,TrialIndex,TrialType,Expectancy,SignalColor,MergeSide," +
         "TimeAbsolute,TimeRelative,X,Y,Z,LaneDeviation,SpeedMPH," +
         "TrialEnded,TrialEndReason,TrialEndTimeAbs,TrialEndTimeRel," +
-        "SurveyQuestion,SurveyResponse,SurveyRT,ColorID_Accuracy";
+        "MergeCueTimeRel,DriverResponseTimeRel,ReactionTime,ResponseType," +
+        "SurveyQuestion,SurveyResponse,SurveyRT";
 
     private void Awake()
     {
@@ -80,6 +129,7 @@ public class PositionRecorder3 : MonoBehaviour
     {
         trialStartTime = Time.time;
 
+        // Pull metadata from ExperimentController (if present)
         if (ExperimentController.Instance != null && ExperimentController.Instance.experimentRunning)
         {
             participantID = ExperimentController.Instance.participantID;
@@ -102,7 +152,14 @@ public class PositionRecorder3 : MonoBehaviour
 
     private void Update()
     {
-        if (!recordingEnabled || target == null) return;
+        // Optional: detect first driver response from input automatically
+        if (autoDetectResponseFromInput && mergeCueMarked && !responseMarked)
+        {
+            TryAutoDetectDriverResponse();
+        }
+
+        if (!recordingEnabled) return;
+        if (target == null) return;
 
         timer += Time.deltaTime;
         if (timer < recordInterval) return;
@@ -131,29 +188,149 @@ public class PositionRecorder3 : MonoBehaviour
         });
     }
 
-    // Call BEFORE loading PTQ
+    // ============================
+    //   Merge cue + response API
+    // ============================
+
+    /// <summary>
+    /// Call this at the moment the adjacent merging vehicle begins lateral movement
+    /// (and turn signal cue occurs).
+    /// </summary>
+    public void MarkMergeCue()
+    {
+        if (mergeCueMarked) return;
+
+        mergeCueMarked = true;
+        mergeCueTimeRel = Time.time - trialStartTime;
+
+        // If a response was marked earlier (rare), compute RT now
+        RecomputeReactionTimeIfPossible();
+    }
+
+    /// <summary>
+    /// Call this at the FIRST moment the driver brakes (response onset).
+    /// If steering also occurs at the same time, ResponseType will become "Both".
+    /// </summary>
+    public void MarkDriverBrake()
+    {
+        if (brakeMarked) return;
+
+        brakeMarked = true;
+        MarkDriverResponseInternal();
+        UpdateResponseType();
+    }
+
+    /// <summary>
+    /// Call this at the FIRST moment the driver steers (response onset).
+    /// If braking also occurs at the same time, ResponseType will become "Both".
+    /// </summary>
+    public void MarkDriverSteer()
+    {
+        if (steerMarked) return;
+
+        steerMarked = true;
+        MarkDriverResponseInternal();
+        UpdateResponseType();
+    }
+
+    private void MarkDriverResponseInternal()
+    {
+        if (responseMarked) return;
+
+        responseMarked = true;
+        driverResponseTimeRel = Time.time - trialStartTime;
+
+        RecomputeReactionTimeIfPossible();
+    }
+
+    private void UpdateResponseType()
+    {
+        if (brakeMarked && steerMarked) responseType = "Both";
+        else if (brakeMarked) responseType = "Brake";
+        else if (steerMarked) responseType = "Steer";
+        else responseType = "None";
+    }
+
+    private void RecomputeReactionTimeIfPossible()
+    {
+        if (mergeCueMarked && responseMarked)
+        {
+            reactionTime = driverResponseTimeRel - mergeCueTimeRel;
+        }
+        else
+        {
+            reactionTime = -1f;
+        }
+    }
+
+    private void TryAutoDetectDriverResponse()
+    {
+        bool brakeTriggered = false;
+        bool steerTriggered = false;
+
+        // Steering
+        if (!string.IsNullOrWhiteSpace(steeringAxisName))
+        {
+            float steer = 0f;
+            try { steer = Input.GetAxis(steeringAxisName); }
+            catch { /* axis may not exist */ }
+
+            if (Mathf.Abs(steer) >= steeringThreshold)
+                steerTriggered = true;
+        }
+
+        // Brake
+        if (!string.IsNullOrWhiteSpace(brakeAxisName))
+        {
+            float brake = 0f;
+            try { brake = Input.GetAxis(brakeAxisName); }
+            catch { /* axis may not exist */ }
+
+            if (brake >= brakeThreshold)
+                brakeTriggered = true;
+        }
+
+        // Mark whichever happened this frame (could be both)
+        if (steerTriggered) MarkDriverSteer();
+        if (brakeTriggered) MarkDriverBrake();
+    }
+
+    // ============================
+    //   Trial end + survey API
+    // ============================
+
+    /// <summary>
+    /// Call BEFORE loading PostTrialQuestion.
+    /// Stops sampling and stamps trial end fields.
+    /// </summary>
     public void StopRecordingForQuestion(string endReason)
     {
         if (trialEnded) return;
 
         recordingEnabled = false;
+
         trialEnded = true;
         trialEndReason = endReason ?? "";
         trialEndTimeAbs = Time.time;
         trialEndTimeRel = Time.time - trialStartTime;
+
+        // If no response was detected, keep ResponseType "None" and reactionTime -1
+        // (you can still mark response later if you want to allow response in question scene, but typically not)
     }
 
-    // Called by PTQS_1
-    public void SetSurveyResult(string question, string response, float rt)
+    /// <summary>
+    /// Called by post-trial question scene after participant clicks response button.
+    /// </summary>
+    public void SetSurveyResult(string question, string response, float rtSeconds)
     {
         surveyQuestion = question ?? "";
         surveyResponse = response ?? "";
-        surveyRT = rt;
-
-        // ===== Compute ColorID_Accuracy =====
-        colorIDAccuracy = ComputeColorAccuracy(surveyResponse, signalColorLabel);
+        surveyRT = rtSeconds;
     }
 
+    /// <summary>
+    /// Called by post-trial question scene to save after response is collected.
+    /// </summary>
     public void SaveNowAndCleanup()
     {
         if (saved) return;
@@ -164,6 +341,10 @@ public class PositionRecorder3 : MonoBehaviour
         if (Current == this) Current = null;
         Destroy(gameObject);
     }
+
+    // ============================
+    //   CSV writing
+    // ============================
 
     private void SaveToCSV()
     {
@@ -181,6 +362,14 @@ public class PositionRecorder3 : MonoBehaviour
 
                 int endedInt = trialEnded ? 1 : 0;
 
+                string endR = CsvEscape(trialEndReason);
+                string q = CsvEscape(surveyQuestion);
+                string r = CsvEscape(surveyResponse);
+
+                // Make sure responseType reflects any marks that happened
+                UpdateResponseType();
+                RecomputeReactionTimeIfPossible();
+
                 foreach (var s in samples)
                 {
                     string row =
@@ -197,36 +386,27 @@ public class PositionRecorder3 : MonoBehaviour
                         $"{s.laneDev:F4}," +
                         $"{s.speedMPH:F2}," +
                         $"{endedInt}," +
-                        $"{CsvEscape(trialEndReason)}," +
+                        $"{endR}," +
                         $"{trialEndTimeAbs:F2}," +
                         $"{trialEndTimeRel:F2}," +
-                        $"{CsvEscape(surveyQuestion)}," +
-                        $"{CsvEscape(surveyResponse)}," +
-                        $"{surveyRT:F3}," +
-                        $"{colorIDAccuracy}";
+                        $"{mergeCueTimeRel:F3}," +
+                        $"{driverResponseTimeRel:F3}," +
+                        $"{reactionTime:F3}," +
+                        $"{CsvEscape(responseType)}," +
+                        $"{q}," +
+                        $"{r}," +
+                        $"{surveyRT:F3}";
 
                     sw.WriteLine(row);
                 }
             }
 
-            Debug.Log($"PositionRecorder3: Saved {samples.Count} rows → {filePath}");
+            Debug.Log($"PositionRecorder3: Appended {samples.Count} rows → {filePath}");
         }
         catch (IOException e)
         {
-            Debug.LogError($"PositionRecorder3: Save failed: {e.Message}");
+            Debug.LogError($"PositionRecorder3: Failed to save file: {e.Message}");
         }
-    }
-
-    // ===== Color accuracy logic =====
-    private int ComputeColorAccuracy(string response, string signalColor)
-    {
-        if (string.IsNullOrWhiteSpace(response) || string.IsNullOrWhiteSpace(signalColor))
-            return 0;
-
-        string r = response.Trim().ToLowerInvariant();
-        string s = signalColor.Trim().ToLowerInvariant();
-
-        return r.Contains(s) ? 1 : 0;
     }
 
     private static string CsvEscape(string s)

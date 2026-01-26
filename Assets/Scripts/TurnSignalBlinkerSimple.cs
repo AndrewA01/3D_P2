@@ -23,6 +23,9 @@ public class TurnSignalBlinkerSimple : MonoBehaviour
     private Renderer[] renderers;
     private bool lastOnState = false;
 
+    // NEW: ensures the blink cycle starts exactly when we begin blinking
+    private float blinkStartTime = 0f;
+
     void Awake()
     {
         if (signalObject == null)
@@ -66,14 +69,22 @@ public class TurnSignalBlinkerSimple : MonoBehaviour
         }
 
         float period = 1f / flashesPerSecond;
-        bool on = Mathf.Repeat(Time.time, period) < period * 0.5f;
+
+        // NEW: blink cycle is relative to when blinking started
+        float t = Time.time - blinkStartTime;
+        bool on = Mathf.Repeat(t, period) < period * 0.5f;
+
         SetState(on);
     }
 
-    // Call this when merge event starts (bot begins accelerating to reach start lead)
+    // Call this when merge event starts (NOW: should be called at STARTLEAD moment / Phase 3 start)
     public void OnMergeStarted()
     {
         isBlinking = true;
+
+        // NEW: anchor the cycle start time so flashing begins NOW
+        blinkStartTime = Time.time;
+
         // Force immediate visible ON so you don't miss it due to timing
         SetState(true, force: true);
     }

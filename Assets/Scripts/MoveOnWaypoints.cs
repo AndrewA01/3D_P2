@@ -216,7 +216,13 @@ public class MoveOnWaypoints : MonoBehaviour
                     float startTargetZ = player.position.z + dir * mergeStartLeadMeters;
                     bool aheadEnough = ((pos.z - startTargetZ) * dir >= 0f);
                     if (aheadEnough)
+                    {
+                        // START blinking exactly when Phase 3 begins (when STARTLEAD is reached)
+                        if (turnSignalBlinker != null)
+                            turnSignalBlinker.OnMergeStarted();
+
                         phase = BotPhase.Merge_Lateral;
+                    }
 
                     break;
                 }
@@ -402,9 +408,8 @@ public class MoveOnWaypoints : MonoBehaviour
 
         phase = BotPhase.Merge_OwnLaneOvertake;
 
-        // START blinking right when merge event occurs
-        if (turnSignalBlinker != null)
-            turnSignalBlinker.OnMergeStarted();
+        // NOTE: Do NOT start blinking here anymore.
+        // Blinking starts when STARTLEAD is reached and Phase 3 lateral begins.
     }
 
     private float GetPlayerForwardSpeedAbs()
