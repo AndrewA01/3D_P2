@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using TMPro;
@@ -24,11 +26,9 @@ public struct TrialCondition
 [System.Serializable]
 public class SceneRef
 {
-    // Runtime-safe scene name
     [SerializeField] private string sceneName;
 
 #if UNITY_EDITOR
-    // Drag-and-drop in Inspector (Editor-only)
     [SerializeField] private SceneAsset sceneAsset;
 #endif
 
@@ -38,14 +38,13 @@ public class SceneRef
     public void SyncNameFromAsset()
     {
         if (sceneAsset != null)
-            sceneName = sceneAsset.name; // must match Build Settings name
+            sceneName = sceneAsset.name;
     }
 #endif
 }
 
 public class ExperimentController : MonoBehaviour
 {
-    // Singleton
     public static ExperimentController Instance { get; private set; }
 
     [Header("UI (SubBlock Scene)")]
@@ -67,25 +66,37 @@ public class ExperimentController : MonoBehaviour
     [Header("Post-Trial Question Scene (drag scene here)")]
     public SceneRef postTrialQuestionScene;
 
+    [Header("Scene Names")]
+    [Tooltip("Name of the start/menu scene.")]
+    public string subBlockSceneName = "SubBlock";
+
     [Header("Player Object Lookup (by name)")]
-    [Tooltip("Exact GameObject name of the player-controlled car in EVERY trial scene. Example: 'Car 1'")]
+    [Tooltip("Exact GameObject name of the player-controlled car in EVERY trial scene. Example: 'Car 1' or 'Car1'")]
     public string playerObjectName = "Car 1";
 
     [Tooltip("Disable/enable MonoBehaviours on the player car AND its children.")]
     public bool includeChildren = true;
 
-    // ====== Runtime fields other scripts rely on ======
+    [Header("Cleanup & Camera Rebind (fixes lingering car/camera issues)")]
+    [Tooltip("If true, destroys any lingering player objects with the same name that survive across scene loads (e.g., in DontDestroyOnLoad).")]
+    public bool destroyLingeringPlayersOnSceneLoad = true;
+
+    [Tooltip("If true, tries to rebind camera follow target to the current scene's player after every trial scene load.")]
+    public bool rebindCameraOnTrialLoad = true;
+
+    [Tooltip("Optional: If your camera is a persistent rig with a known name, list it here (e.g., 'CameraRig'). Leave empty to just use Camera.main.")]
+    public string persistentCameraRigName = "";
+
+    // ===== Runtime fields other scripts rely on =====
     [Header("Runtime (read-only)")]
     public string participantID;
     public BlockType currentBlock;
     public int currentTrialIndex = -1;
     public bool experimentRunning = false;
 
-    // Internal schedules
     private readonly List<string> trialSceneOrder = new();
     private readonly List<TrialCondition> trialConditions = new();
 
-    // Property other scripts rely on
     public TrialCondition CurrentCondition
     {
         get
@@ -93,7 +104,6 @@ public class ExperimentController : MonoBehaviour
             if (currentTrialIndex >= 0 && currentTrialIndex < trialConditions.Count)
                 return trialConditions[currentTrialIndex];
 
-            // fallback
             return new TrialCondition
             {
                 isPractice = true,
@@ -116,16 +126,24 @@ public class ExperimentController : MonoBehaviour
         DontDestroyOnLoad(gameObject);
     }
 
+    private void OnEnable()
+    {
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    private void OnDisable()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
 #if UNITY_EDITOR
     private void OnValidate()
     {
         if (practiceScenes != null)
-            foreach (var s in practiceScenes)
-                s?.SyncNameFromAsset();
+            foreach (var s in practiceScenes) s?.SyncNameFromAsset();
 
         if (mainScenes != null)
-            foreach (var s in mainScenes)
-                s?.SyncNameFromAsset();
+            foreach (var s in mainScenes) s?.SyncNameFromAsset();
 
         postTrialQuestionScene?.SyncNameFromAsset();
     }
@@ -156,7 +174,7 @@ public class ExperimentController : MonoBehaviour
         }
 
         Debug.Log("[ExperimentController] Loading PTQ scene: " + ptq);
-        SceneManager.LoadScene(ptq);
+        SceneManager.LoadScene(ptq, LoadSceneMode.Single);
     }
 
     // Called by PTQ script after countdown finishes
@@ -171,28 +189,28 @@ public class ExperimentController : MonoBehaviour
 
         if (currentTrialIndex >= trialSceneOrder.Count)
         {
-            Debug.Log($"[ExperimentController] Finished all trials for {participantID} ({currentBlock}). Returning to SubBlock.");
+            Debug.Log($"[ExperimentController] Finished all trials for {participantID} ({currentBlock}). Returning to {subBlockSceneName}.");
 
             experimentRunning = false;
             currentTrialIndex = -1;
 
-            SceneManager.LoadScene("SubBlock");
+            SceneManager.LoadScene(subBlockSceneName, LoadSceneMode.Single);
             Destroy(gameObject);
             return;
         }
 
         string next = trialSceneOrder[currentTrialIndex];
         Debug.Log($"[ExperimentController] Trial {currentTrialIndex} loading scene: {next}");
-        SceneManager.LoadScene(next);
+        SceneManager.LoadScene(next, LoadSceneMode.Single);
     }
 
     // ===== Controls toggle for PTQ =====
     public void SetParticipantControlsEnabled(bool enabled)
     {
-        GameObject player = FindPlayerObject();
+        GameObject player = FindPlayerObjectInActiveScene();
         if (player == null)
         {
-            Debug.LogWarning($"[ExperimentController] Could not find player object named '{playerObjectName}' in this scene.");
+            Debug.LogWarning($"[ExperimentController] Could not find player object named '{playerObjectName}' in the ACTIVE scene.");
             return;
         }
 
@@ -220,24 +238,191 @@ public class ExperimentController : MonoBehaviour
         Debug.Log($"[ExperimentController] Player controls {(enabled ? "ENABLED" : "DISABLED")} for '{playerObjectName}'.");
     }
 
-    private GameObject FindPlayerObject()
+    // ===== Scene load hook: cleanup lingering player + rebind camera =====
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (!experimentRunning) return;
+
+        string ptqName = postTrialQuestionScene != null ? postTrialQuestionScene.Name : "";
+        bool isPTQ = !string.IsNullOrWhiteSpace(ptqName) && scene.name == ptqName;
+        bool isSubBlock = !string.IsNullOrWhiteSpace(subBlockSceneName) && scene.name == subBlockSceneName;
+
+        // If we're in PTQ, usually no car should be active; but we still cleanup if something persisted.
+        if (destroyLingeringPlayersOnSceneLoad)
+        {
+            CleanupLingeringPlayers(scene);
+        }
+
+        // Only rebind camera on actual trial scenes (not PTQ and not menu)
+        if (rebindCameraOnTrialLoad && !isPTQ && !isSubBlock)
+        {
+            var player = FindPlayerObjectInActiveScene();
+            if (player != null)
+            {
+                RebindCameraTo(player.transform);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Destroys extra player objects with the same name that survive across loads (common culprit is DontDestroyOnLoad).
+    /// Keeps the one in the ACTIVE scene (if present).
+    /// </summary>
+    private void CleanupLingeringPlayers(Scene activeScene)
+    {
+        if (string.IsNullOrWhiteSpace(playerObjectName)) return;
+
+        // Find all objects with that name across loaded + DontDestroyOnLoad
+        var all = FindAllGameObjectsByName(playerObjectName);
+        if (all.Count <= 1) return;
+
+        // Prefer keeping the one in the active scene (the newly loaded trial scene)
+        GameObject keep = all.FirstOrDefault(go => go != null && go.scene == activeScene);
+
+        // If none are in active scene, keep the first (better than deleting all)
+        if (keep == null)
+            keep = all.FirstOrDefault(go => go != null);
+
+        foreach (var go in all)
+        {
+            if (go == null) continue;
+            if (go == keep) continue;
+
+            Debug.LogWarning($"[ExperimentController] Destroying lingering player duplicate '{go.name}' from scene '{go.scene.name}'.");
+            Destroy(go);
+        }
+    }
+
+    private GameObject FindPlayerObjectInActiveScene()
     {
         if (string.IsNullOrWhiteSpace(playerObjectName))
             return null;
 
-        // Fast path
-        GameObject exact = GameObject.Find(playerObjectName);
-        if (exact != null) return exact;
+        // Fast path: finds in active scene, but also can find DontDestroyOnLoad.
+        // We specifically want the one belonging to the ACTIVE scene.
+        var candidates = FindAllGameObjectsByName(playerObjectName);
+        if (candidates.Count == 0) return null;
 
-        // Fallback: root search
-        var roots = SceneManager.GetActiveScene().GetRootGameObjects();
-        foreach (var r in roots)
+        var active = SceneManager.GetActiveScene();
+        var inActive = candidates.FirstOrDefault(go => go != null && go.scene == active);
+        if (inActive != null) return inActive;
+
+        // Fallback
+        return candidates.FirstOrDefault(go => go != null);
+    }
+
+    /// <summary>
+    /// Robustly finds objects by name across loaded scenes + DontDestroyOnLoad via Resources.FindObjectsOfTypeAll.
+    /// </summary>
+    private static List<GameObject> FindAllGameObjectsByName(string exactName)
+    {
+        var results = new List<GameObject>();
+        if (string.IsNullOrWhiteSpace(exactName)) return results;
+
+        var allGos = Resources.FindObjectsOfTypeAll<GameObject>();
+        foreach (var go in allGos)
         {
-            if (r != null && r.name == playerObjectName)
-                return r;
+            if (go == null) continue;
+            if (go.name != exactName) continue;
+
+            // Skip editor-only / hidden assets
+            if ((go.hideFlags & HideFlags.HideInHierarchy) != 0) continue;
+
+            // Must be part of a valid scene (including DontDestroyOnLoad)
+            if (!go.scene.IsValid()) continue;
+
+            results.Add(go);
         }
 
-        return null;
+        // De-dup just in case
+        return results.Distinct().ToList();
+    }
+
+    private void RebindCameraTo(Transform target)
+    {
+        if (target == null) return;
+
+        // Use persistent rig if named
+        Camera cam = null;
+
+        if (!string.IsNullOrWhiteSpace(persistentCameraRigName))
+        {
+            var rig = GameObject.Find(persistentCameraRigName);
+            if (rig != null)
+                cam = rig.GetComponentInChildren<Camera>(true);
+        }
+
+        if (cam == null)
+            cam = Camera.main;
+
+        if (cam == null)
+        {
+            Debug.LogWarning("[ExperimentController] No camera found to rebind (Camera.main is null).");
+            return;
+        }
+
+        // 1) Try Cinemachine via reflection (no hard dependency)
+        TryRebindCinemachine(target);
+
+        // 2) Try common follow scripts on the camera
+        TrySetTargetOnBehaviours(cam.gameObject, target);
+
+        Debug.Log($"[ExperimentController] Camera rebind attempted to '{target.name}'.");
+    }
+
+    private void TryRebindCinemachine(Transform target)
+    {
+        // Look for components named "CinemachineVirtualCamera" and set Follow/LookAt via reflection.
+        var allBehaviours = Resources.FindObjectsOfTypeAll<MonoBehaviour>();
+        foreach (var b in allBehaviours)
+        {
+            if (b == null) continue;
+            var t = b.GetType();
+            if (t.FullName == null) continue;
+
+            if (!t.FullName.Contains("CinemachineVirtualCamera")) continue;
+
+            var followProp = t.GetProperty("Follow");
+            var lookAtProp = t.GetProperty("LookAt");
+
+            if (followProp != null && followProp.CanWrite)
+                followProp.SetValue(b, target, null);
+
+            if (lookAtProp != null && lookAtProp.CanWrite)
+                lookAtProp.SetValue(b, target, null);
+        }
+    }
+
+    private void TrySetTargetOnBehaviours(GameObject cameraGO, Transform target)
+    {
+        var behaviours = cameraGO.GetComponentsInChildren<MonoBehaviour>(true);
+        foreach (var b in behaviours)
+        {
+            if (b == null) continue;
+            var type = b.GetType();
+
+            // Try common fields/properties: "target", "Target", "followTarget", "FollowTarget"
+            SetIfExists(type, b, "target", target);
+            SetIfExists(type, b, "Target", target);
+            SetIfExists(type, b, "followTarget", target);
+            SetIfExists(type, b, "FollowTarget", target);
+        }
+    }
+
+    private void SetIfExists(Type type, object instance, string memberName, Transform target)
+    {
+        var field = type.GetField(memberName);
+        if (field != null && field.FieldType == typeof(Transform))
+        {
+            field.SetValue(instance, target);
+            return;
+        }
+
+        var prop = type.GetProperty(memberName);
+        if (prop != null && prop.CanWrite && prop.PropertyType == typeof(Transform))
+        {
+            prop.SetValue(instance, target, null);
+        }
     }
 
     // ===== Trial scene order =====
@@ -245,21 +430,18 @@ public class ExperimentController : MonoBehaviour
     {
         trialSceneOrder.Clear();
 
-        // Practice section
         for (int i = 0; i < practiceTrialCount; i++)
         {
             if (practiceScenes == null || practiceScenes.Count == 0) break;
             trialSceneOrder.Add(practiceScenes[i % practiceScenes.Count].Name);
         }
 
-        // Main section
         for (int i = 0; i < mainTrialCount; i++)
         {
             if (mainScenes == null || mainScenes.Count == 0) break;
             trialSceneOrder.Add(mainScenes[i % mainScenes.Count].Name);
         }
 
-        // Shuffle within sections (optional)
         int practiceEnd = Mathf.Min(practiceTrialCount, trialSceneOrder.Count);
 
         if (shufflePracticeOrder && practiceEnd > 1)
@@ -275,7 +457,7 @@ public class ExperimentController : MonoBehaviour
     {
         for (int i = startInclusive; i < endExclusive; i++)
         {
-            int j = Random.Range(i, endExclusive);
+            int j = UnityEngine.Random.Range(i, endExclusive);
             (list[i], list[j]) = (list[j], list[i]);
         }
     }
@@ -293,7 +475,6 @@ public class ExperimentController : MonoBehaviour
             (Expectancy.Unexpected, SignalColor.Amber)
         };
 
-        // Practice: 4 trials (1 per combo)
         foreach (var c in combos)
         {
             trialConditions.Add(new TrialCondition
@@ -301,11 +482,10 @@ public class ExperimentController : MonoBehaviour
                 isPractice = true,
                 expectancy = c.Item1,
                 signalColor = c.Item2,
-                mergeSide = Random.value < 0.5f ? MergeSide.Left : MergeSide.Right
+                mergeSide = UnityEngine.Random.value < 0.5f ? MergeSide.Left : MergeSide.Right
             });
         }
 
-        // Main: 16 trials (4 per combo: 2 left, 2 right)
         foreach (var c in combos)
         {
             for (int i = 0; i < 4; i++)
@@ -319,8 +499,5 @@ public class ExperimentController : MonoBehaviour
                 });
             }
         }
-
-        // NOTE: If you shuffle scenes independently, condition order stays as built above.
-        // If you need conditions to follow the same shuffle pattern, tell me and I’ll align them.
     }
 }

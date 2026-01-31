@@ -1,114 +1,107 @@
-using System.Collections.Generic;
+﻿using System;
 using System.IO;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
-/// <summary>
-/// PositionRecorder3 (Position Logger 3)
-/// - Records per-sample kinematics to CSV
-/// - Persists across scenes (DontDestroyOnLoad) so post-trial question can be answered before saving
-/// - Adds merge-event timing columns:
-///     MergeCueTimeRel
-///     DriverResponseTimeRel
-///     ReactionTime
-///     ResponseType (Brake / Steer / Both / None)
-///
-/// ReactionTime definition:
-///   ReactionTime = DriverResponseTimeRel - MergeCueTimeRel
-///
-/// How to use for event timing:
-/// 1) When adjacent merging vehicle begins lateral movement (and turn signal cue), call:
-///      PositionRecorder3.Current.MarkMergeCue();
-/// 2) Driver response onset can be detected automatically via input axis thresholds (optional),
-///    OR you can call:
-///      PositionRecorder3.Current.MarkDriverBrake();
-///      PositionRecorder3.Current.MarkDriverSteer();
-/// </summary>
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
 public class PositionRecorder3 : MonoBehaviour
 {
     public static PositionRecorder3 Current { get; private set; }
 
     [Header("Target (Ego Vehicle)")]
+    [Tooltip("If empty, auto-finds GameObject named ExperimentController.Instance.playerObjectName each trial.")]
     public GameObject target;
+
+    [Tooltip("Seconds between samples.")]
+    [Min(0.01f)]
     public float recordInterval = 0.1f;
 
     [Header("Lane Center (optional)")]
     public Transform laneCenter;
 
-    [Header("Output Folder (relative to project)")]
-    public string relativeFolderPath = "Assets/CSVCollection/NewPL";
+    [Header("Folders")]
+    [Tooltip("Runtime writes to persistentDataPath/<relativeFolderPath>. Editor copies final file into Assets/<relativeFolderPath> at block end.")]
+    public string relativeFolderPath = "CSVCollection/NewPL";
 
-    [Header("Optional: Auto-detect driver response from Input axes")]
-    [Tooltip("If enabled, logger will mark the first driver response using input axis thresholds.")]
-    public bool autoDetectResponseFromInput = false;
+    [Header("Persist")]
+    [Tooltip("Recommended ON so the logger survives trial -> PTQ -> trial scene loads.")]
+    public bool detachAndPersist = true;
 
-    [Tooltip("Input axis name for steering (e.g., Horizontal). Leave blank to disable steering auto-detect.")]
-    public string steeringAxisName = "Horizontal";
+    [Header("Debug / Trial End Controls")]
+    public bool enableDebugHotkey = true;
+    public KeyCode debugEndKey = KeyCode.P;
 
-    [Tooltip("Input axis name for braking (e.g., Brake). Leave blank to disable brake auto-detect.")]
-    public string brakeAxisName = "Brake";
+    [Tooltip("If enabled, trial ends automatically after trialTimeoutSeconds.")]
+    public bool enableTrialTimeout = false;
 
-    [Tooltip("Absolute steering axis must exceed this to count as response.")]
-    public float steeringThreshold = 0.15f;
+    [Min(1f)]
+    public float trialTimeoutSeconds = 60f;
 
-    [Tooltip("Brake axis must exceed this to count as response.")]
-    public float brakeThreshold = 0.10f;
+    [Header("Optional: show save path on screen")]
+    public bool showSavePathOnScreen = false;
 
     private Rigidbody targetRigidbody;
-    private float timer;
-    private float trialStartTime;
 
-    private bool recordingEnabled = true;
-    private bool saved = false;
+    private float sampleTimer;
+    private float blockStartTimeAbs;
+    private float trialStartTimeAbs;
 
-    // ===== Trial metadata (from ExperimentController) =====
-    private string participantID = "NA";
+    private bool blockInitialized;
+    private bool blockEnded;
+    private bool samplingEnabled;
+    private bool sawController;
+    private int lastTrialIndex = int.MinValue;
+
+    private string participantID = "P000";
     private string blockLabel = "NA";
-    private int trialIndex = -1;
 
     private string trialType = "Unknown";
     private string expectancyLabel = "Unknown";
     private string signalColorLabel = "Unknown";
     private string mergeSideLabel = "Unknown";
 
-    // ===== Trial-end fields (optional but useful) =====
-    private bool trialEnded = false;
+    private bool trialEnded;
     private string trialEndReason = "";
     private float trialEndTimeAbs = -1f;
     private float trialEndTimeRel = -1f;
 
-    // ===== Survey fields (set in post-trial question scene) =====
     private string surveyQuestion = "";
     private string surveyResponse = "";
     private float surveyRT = -1f;
 
-    // ===== Merge cue + driver response timing =====
-    private bool mergeCueMarked = false;
+    private bool mergeCueMarked;
     private float mergeCueTimeRel = -1f;
 
-    private bool responseMarked = false;
+    private bool responseMarked;
     private float driverResponseTimeRel = -1f;
 
-    // These track the earliest input type if both happen nearly together
-    private bool brakeMarked = false;
-    private bool steerMarked = false;
+    private bool brakeMarked;
+    private bool steerMarked;
 
-    private string responseType = "None"; // Brake / Steer / Both / None
-    private float reactionTime = -1f;     // DriverResponseTimeRel - MergeCueTimeRel (if both exist)
+    private string responseType = "None";
+    private float reactionTime = -1f;
 
-    private struct Sample
-    {
-        public float timeAbs;
-        public float timeRel;
-        public Vector3 pos;
-        public float laneDev;
-        public float speedMPH;
-    }
+    private StreamWriter writer;
+    private string runtimeFolder;
+    private string runtimeFilePath;
 
-    private readonly List<Sample> samples = new();
+#if UNITY_EDITOR
+    private string assetsFolder;
+    private string assetsCopyPath;
+#endif
 
-    private const string CsvHeader =
-        "ParticipantID,Block,TrialIndex,TrialType,Expectancy,SignalColor,MergeSide," +
-        "TimeAbsolute,TimeRelative,X,Y,Z,LaneDeviation,SpeedMPH," +
+    public string RuntimeFolderPath => runtimeFolder;
+    public string RuntimeFilePath => runtimeFilePath;
+
+    private const string Header =
+        "ParticipantID,Block,BlockStartTimeAbs,BlockTimeRel," +
+        "TrialIndex,TrialType,Expectancy,SignalColor,MergeSide," +
+        "SceneName,Event," +
+        "TimeAbs,TrialTimeRel," +
+        "X,Y,Z,LaneDeviation,SpeedMPH," +
         "TrialEnded,TrialEndReason,TrialEndTimeAbs,TrialEndTimeRel," +
         "MergeCueTimeRel,DriverResponseTimeRel,ReactionTime,ResponseType," +
         "SurveyQuestion,SurveyResponse,SurveyRT";
@@ -120,127 +113,135 @@ public class PositionRecorder3 : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-
         Current = this;
-        DontDestroyOnLoad(gameObject);
-    }
 
-    private void Start()
-    {
-        trialStartTime = Time.time;
-
-        // Pull metadata from ExperimentController (if present)
-        if (ExperimentController.Instance != null && ExperimentController.Instance.experimentRunning)
+        if (detachAndPersist)
         {
-            participantID = ExperimentController.Instance.participantID;
-            blockLabel = ExperimentController.Instance.currentBlock.ToString();
-            trialIndex = ExperimentController.Instance.currentTrialIndex;
-
-            var cond = ExperimentController.Instance.CurrentCondition;
-            trialType = cond.isPractice ? "Practice" : "Main";
-            expectancyLabel = cond.expectancy.ToString();
-            signalColorLabel = cond.signalColor.ToString();
-            mergeSideLabel = cond.mergeSide.ToString();
+            transform.SetParent(null, true);
+            DontDestroyOnLoad(gameObject);
+            gameObject.name = "PositionRecorder3_BlockLogger";
         }
-
-        if (!Directory.Exists(relativeFolderPath))
-            Directory.CreateDirectory(relativeFolderPath);
-
-        if (target != null)
-            targetRigidbody = target.GetComponent<Rigidbody>();
     }
 
     private void Update()
     {
-        // Optional: detect first driver response from input automatically
-        if (autoDetectResponseFromInput && mergeCueMarked && !responseMarked)
+        UpdateBlockAndTrialState();
+
+        if (samplingEnabled && enableDebugHotkey && Input.GetKeyDown(debugEndKey))
         {
-            TryAutoDetectDriverResponse();
+            EndTrialAndGoToPTQ("KeyPress_" + debugEndKey);
+            return;
         }
 
-        if (!recordingEnabled) return;
+        if (samplingEnabled && enableTrialTimeout)
+        {
+            float trialElapsed = Time.time - trialStartTimeAbs;
+            if (trialStartTimeAbs > 0f && trialElapsed >= trialTimeoutSeconds)
+            {
+                EndTrialAndGoToPTQ("Timeout_" + trialTimeoutSeconds.ToString("F0") + "s");
+                return;
+            }
+        }
+
+        if (!samplingEnabled) return;
+
+        EnsureTarget();
         if (target == null) return;
 
-        timer += Time.deltaTime;
-        if (timer < recordInterval) return;
-        timer = 0f;
+        sampleTimer += Time.deltaTime;
+        if (sampleTimer < recordInterval) return;
+        sampleTimer = 0f;
+
+        float timeAbs = Time.time;
+        float blockTimeRel = timeAbs - blockStartTimeAbs;
+        float trialTimeRel = timeAbs - trialStartTimeAbs;
 
         Vector3 pos = target.transform.position;
 
-        float speedMPH = (targetRigidbody != null)
-            ? targetRigidbody.velocity.magnitude * 2.23694f
-            : 0f;
-
-        float timeAbs = Time.time;
-        float timeRel = Time.time - trialStartTime;
+        float speedMPH = 0f;
+        if (targetRigidbody != null)
+            speedMPH = targetRigidbody.velocity.magnitude * 2.23694f;
 
         float laneDev = 0f;
         if (laneCenter != null)
             laneDev = laneCenter.InverseTransformPoint(pos).x;
 
-        samples.Add(new Sample
-        {
-            timeAbs = timeAbs,
-            timeRel = timeRel,
-            pos = pos,
-            laneDev = laneDev,
-            speedMPH = speedMPH
-        });
+        WriteRow("SAMPLE", timeAbs, blockTimeRel, trialTimeRel, pos, laneDev, speedMPH);
     }
 
-    // ============================
-    //   Merge cue + response API
-    // ============================
+    public void EndTrialAndGoToPTQ(string reason)
+    {
+        if (!blockInitialized) return;
+        if (!samplingEnabled) return;
+        if (trialEnded) return;
 
-    /// <summary>
-    /// Call this at the moment the adjacent merging vehicle begins lateral movement
-    /// (and turn signal cue occurs).
-    /// </summary>
+        StopRecordingForQuestion(reason);
+
+        var ec = ExperimentController.Instance;
+        if (ec != null) ec.GoToPostTrialQuestion();
+        else Debug.LogWarning("[PositionRecorder3] ExperimentController.Instance not found; cannot load PTQ.");
+    }
+
+    public void StopRecordingForQuestion(string endReason)
+    {
+        if (!blockInitialized) return;
+
+        samplingEnabled = false;
+
+        trialEnded = true;
+        trialEndReason = endReason ?? "";
+        trialEndTimeAbs = Time.time;
+        trialEndTimeRel = trialEndTimeAbs - trialStartTimeAbs;
+
+        WriteMarker("TRIAL_END");
+        Flush();
+    }
+
+    public void SetSurveyResult(string question, string response, float rtSeconds)
+    {
+        if (!blockInitialized) return;
+
+        surveyQuestion = question ?? "";
+        surveyResponse = response ?? "";
+        surveyRT = rtSeconds;
+
+        WriteMarker("SURVEY");
+        Flush();
+    }
+
+    public void SaveNowAndCleanup() => Flush();
+    public void SaveNow() => Flush();
+
     public void MarkMergeCue()
     {
-        if (mergeCueMarked) return;
-
+        if (!blockInitialized || mergeCueMarked) return;
         mergeCueMarked = true;
-        mergeCueTimeRel = Time.time - trialStartTime;
-
-        // If a response was marked earlier (rare), compute RT now
-        RecomputeReactionTimeIfPossible();
+        mergeCueTimeRel = Time.time - trialStartTimeAbs;
+        RecomputeRT();
     }
 
-    /// <summary>
-    /// Call this at the FIRST moment the driver brakes (response onset).
-    /// If steering also occurs at the same time, ResponseType will become "Both".
-    /// </summary>
     public void MarkDriverBrake()
     {
-        if (brakeMarked) return;
-
+        if (!blockInitialized || brakeMarked) return;
         brakeMarked = true;
-        MarkDriverResponseInternal();
+        MarkResponseInternal();
         UpdateResponseType();
     }
 
-    /// <summary>
-    /// Call this at the FIRST moment the driver steers (response onset).
-    /// If braking also occurs at the same time, ResponseType will become "Both".
-    /// </summary>
     public void MarkDriverSteer()
     {
-        if (steerMarked) return;
-
+        if (!blockInitialized || steerMarked) return;
         steerMarked = true;
-        MarkDriverResponseInternal();
+        MarkResponseInternal();
         UpdateResponseType();
     }
 
-    private void MarkDriverResponseInternal()
+    private void MarkResponseInternal()
     {
         if (responseMarked) return;
-
         responseMarked = true;
-        driverResponseTimeRel = Time.time - trialStartTime;
-
-        RecomputeReactionTimeIfPossible();
+        driverResponseTimeRel = Time.time - trialStartTimeAbs;
+        RecomputeRT();
     }
 
     private void UpdateResponseType()
@@ -251,162 +252,227 @@ public class PositionRecorder3 : MonoBehaviour
         else responseType = "None";
     }
 
-    private void RecomputeReactionTimeIfPossible()
+    private void RecomputeRT()
     {
-        if (mergeCueMarked && responseMarked)
+        reactionTime = (mergeCueMarked && responseMarked) ? (driverResponseTimeRel - mergeCueTimeRel) : -1f;
+    }
+
+    private void UpdateBlockAndTrialState()
+    {
+        var ec = ExperimentController.Instance;
+        if (ec != null) sawController = true;
+
+        if (!blockInitialized && ec != null && ec.experimentRunning)
         {
-            reactionTime = driverResponseTimeRel - mergeCueTimeRel;
+            StartBlock(ec);
         }
-        else
+
+        if (!blockInitialized) return;
+
+        if (ec != null && ec.experimentRunning)
         {
-            reactionTime = -1f;
+            int t = ec.currentTrialIndex;
+            if (t != lastTrialIndex)
+                StartTrial(ec, t);
+        }
+
+        if (!blockEnded)
+        {
+            bool controllerGone = (sawController && ec == null);
+            bool controllerStopped = (ec != null && !ec.experimentRunning && ec.currentTrialIndex == -1);
+
+            if (controllerGone || controllerStopped)
+                EndBlock();
         }
     }
 
-    private void TryAutoDetectDriverResponse()
+    private void StartBlock(ExperimentController ec)
     {
-        bool brakeTriggered = false;
-        bool steerTriggered = false;
+        blockInitialized = true;
+        blockStartTimeAbs = Time.time;
 
-        // Steering
-        if (!string.IsNullOrWhiteSpace(steeringAxisName))
+        participantID = string.IsNullOrWhiteSpace(ec.participantID) ? "P000" : ec.participantID;
+        blockLabel = ec.currentBlock.ToString();
+
+        runtimeFolder = Path.Combine(Application.persistentDataPath, relativeFolderPath);
+        Directory.CreateDirectory(runtimeFolder);
+
+        string stamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+        string fileName = $"P{participantID}_{blockLabel}_BlockLog_{stamp}.csv";
+        runtimeFilePath = Path.Combine(runtimeFolder, fileName);
+
+#if UNITY_EDITOR
+        assetsFolder = Path.Combine(Application.dataPath, relativeFolderPath);
+        assetsCopyPath = Path.Combine(assetsFolder, fileName);
+#endif
+
+        writer = new StreamWriter(runtimeFilePath, append: false);
+        writer.WriteLine(Header);
+        writer.Flush();
+
+        Debug.Log($"[PositionRecorder3] BLOCK START. Runtime CSV:\n{runtimeFilePath}");
+#if UNITY_EDITOR
+        Debug.Log($"[PositionRecorder3] Will copy into Assets at block end:\n{assetsCopyPath}");
+#endif
+
+        lastTrialIndex = int.MinValue;
+    }
+
+    private void StartTrial(ExperimentController ec, int newTrialIndex)
+    {
+        lastTrialIndex = newTrialIndex;
+
+        trialStartTimeAbs = Time.time;
+        sampleTimer = 0f;
+        samplingEnabled = true;
+
+        trialEnded = false;
+        trialEndReason = "";
+        trialEndTimeAbs = -1f;
+        trialEndTimeRel = -1f;
+
+        surveyQuestion = "";
+        surveyResponse = "";
+        surveyRT = -1f;
+
+        mergeCueMarked = false;
+        mergeCueTimeRel = -1f;
+
+        responseMarked = false;
+        driverResponseTimeRel = -1f;
+        brakeMarked = false;
+        steerMarked = false;
+        responseType = "None";
+        reactionTime = -1f;
+
+        var cond = ec.CurrentCondition;
+        trialType = cond.isPractice ? "Practice" : "Main";
+        expectancyLabel = cond.expectancy.ToString();
+        signalColorLabel = cond.signalColor.ToString();
+        mergeSideLabel = cond.mergeSide.ToString();
+
+        EnsureTarget(forceFind: true);
+
+        WriteMarker("TRIAL_START");
+        Flush();
+    }
+
+    private void EndBlock()
+    {
+        blockEnded = true;
+
+        WriteMarker("BLOCK_END");
+        Flush();
+
+        try { writer?.Close(); } catch { }
+        writer = null;
+
+#if UNITY_EDITOR
+        try
         {
-            float steer = 0f;
-            try { steer = Input.GetAxis(steeringAxisName); }
-            catch { /* axis may not exist */ }
-
-            if (Mathf.Abs(steer) >= steeringThreshold)
-                steerTriggered = true;
+            Directory.CreateDirectory(assetsFolder);
+            File.Copy(runtimeFilePath, assetsCopyPath, overwrite: true);
+            AssetDatabase.Refresh();
+            Debug.Log($"[PositionRecorder3] Copied final CSV into Assets:\n{assetsCopyPath}");
         }
-
-        // Brake
-        if (!string.IsNullOrWhiteSpace(brakeAxisName))
+        catch (Exception e)
         {
-            float brake = 0f;
-            try { brake = Input.GetAxis(brakeAxisName); }
-            catch { /* axis may not exist */ }
-
-            if (brake >= brakeThreshold)
-                brakeTriggered = true;
+            Debug.LogError($"[PositionRecorder3] Failed to copy into Assets: {e.Message}");
         }
+#endif
 
-        // Mark whichever happened this frame (could be both)
-        if (steerTriggered) MarkDriverSteer();
-        if (brakeTriggered) MarkDriverBrake();
-    }
-
-    // ============================
-    //   Trial end + survey API
-    // ============================
-
-    /// <summary>
-    /// Call BEFORE loading PostTrialQuestion.
-    /// Stops sampling and stamps trial end fields.
-    /// </summary>
-    public void StopRecordingForQuestion(string endReason)
-    {
-        if (trialEnded) return;
-
-        recordingEnabled = false;
-
-        trialEnded = true;
-        trialEndReason = endReason ?? "";
-        trialEndTimeAbs = Time.time;
-        trialEndTimeRel = Time.time - trialStartTime;
-
-        // If no response was detected, keep ResponseType "None" and reactionTime -1
-        // (you can still mark response later if you want to allow response in question scene, but typically not)
-    }
-
-    /// <summary>
-    /// Called by post-trial question scene after participant clicks response button.
-    /// </summary>
-    public void SetSurveyResult(string question, string response, float rtSeconds)
-    {
-        surveyQuestion = question ?? "";
-        surveyResponse = response ?? "";
-        surveyRT = rtSeconds;
-    }
-
-    /// <summary>
-    /// Called by post-trial question scene to save after response is collected.
-    /// </summary>
-    public void SaveNowAndCleanup()
-    {
-        if (saved) return;
-        saved = true;
-
-        SaveToCSV();
+        Debug.Log($"[PositionRecorder3] BLOCK END. Saved runtime CSV at:\n{runtimeFilePath}");
 
         if (Current == this) Current = null;
         Destroy(gameObject);
     }
 
-    // ============================
-    //   CSV writing
-    // ============================
-
-    private void SaveToCSV()
+    private void EnsureTarget(bool forceFind = false)
     {
-        string fileName = $"P{participantID}_{blockLabel}.csv";
-        string filePath = Path.Combine(relativeFolderPath, fileName);
+        if (!forceFind && target != null) return;
 
-        try
+        var ec = ExperimentController.Instance;
+        if (ec != null && !string.IsNullOrWhiteSpace(ec.playerObjectName))
         {
-            bool exists = File.Exists(filePath);
-
-            using (StreamWriter sw = new StreamWriter(filePath, append: true))
+            var found = GameObject.Find(ec.playerObjectName);
+            if (found != null)
             {
-                if (!exists)
-                    sw.WriteLine(CsvHeader);
-
-                int endedInt = trialEnded ? 1 : 0;
-
-                string endR = CsvEscape(trialEndReason);
-                string q = CsvEscape(surveyQuestion);
-                string r = CsvEscape(surveyResponse);
-
-                // Make sure responseType reflects any marks that happened
-                UpdateResponseType();
-                RecomputeReactionTimeIfPossible();
-
-                foreach (var s in samples)
-                {
-                    string row =
-                        $"{participantID}," +
-                        $"{blockLabel}," +
-                        $"{trialIndex}," +
-                        $"{trialType}," +
-                        $"{expectancyLabel}," +
-                        $"{signalColorLabel}," +
-                        $"{mergeSideLabel}," +
-                        $"{s.timeAbs:F2}," +
-                        $"{s.timeRel:F2}," +
-                        $"{s.pos.x:F4},{s.pos.y:F4},{s.pos.z:F4}," +
-                        $"{s.laneDev:F4}," +
-                        $"{s.speedMPH:F2}," +
-                        $"{endedInt}," +
-                        $"{endR}," +
-                        $"{trialEndTimeAbs:F2}," +
-                        $"{trialEndTimeRel:F2}," +
-                        $"{mergeCueTimeRel:F3}," +
-                        $"{driverResponseTimeRel:F3}," +
-                        $"{reactionTime:F3}," +
-                        $"{CsvEscape(responseType)}," +
-                        $"{q}," +
-                        $"{r}," +
-                        $"{surveyRT:F3}";
-
-                    sw.WriteLine(row);
-                }
+                target = found;
+                targetRigidbody = target.GetComponent<Rigidbody>();
+                return;
             }
+        }
 
-            Debug.Log($"PositionRecorder3: Appended {samples.Count} rows → {filePath}");
-        }
-        catch (IOException e)
+        target = null;
+        targetRigidbody = null;
+    }
+
+    private void WriteMarker(string eventName)
+    {
+        float timeAbs = Time.time;
+        float blockTimeRel = timeAbs - blockStartTimeAbs;
+        float trialTimeRel = (trialStartTimeAbs > 0f) ? (timeAbs - trialStartTimeAbs) : 0f;
+
+        WriteRow(eventName, timeAbs, blockTimeRel, trialTimeRel, null, null, null);
+    }
+
+    private void WriteRow(string eventName, float timeAbs, float blockTimeRel, float trialTimeRel,
+                          Vector3? pos, float? laneDev, float? speedMPH)
+    {
+        if (writer == null) return;
+
+        string sceneName = SceneManager.GetActiveScene().name;
+
+        string x = pos.HasValue ? pos.Value.x.ToString("F4") : "";
+        string y = pos.HasValue ? pos.Value.y.ToString("F4") : "";
+        string z = pos.HasValue ? pos.Value.z.ToString("F4") : "";
+        string ld = laneDev.HasValue ? laneDev.Value.ToString("F4") : "";
+        string sp = speedMPH.HasValue ? speedMPH.Value.ToString("F2") : "";
+
+        UpdateResponseType();
+        RecomputeRT();
+
+        int endedInt = trialEnded ? 1 : 0;
+
+        string line =
+            $"{participantID}," +
+            $"{blockLabel}," +
+            $"{blockStartTimeAbs:F2}," +
+            $"{blockTimeRel:F2}," +
+            $"{lastTrialIndex}," +
+            $"{trialType}," +
+            $"{expectancyLabel}," +
+            $"{signalColorLabel}," +
+            $"{mergeSideLabel}," +
+            $"{CsvEscape(sceneName)}," +
+            $"{eventName}," +
+            $"{timeAbs:F2}," +
+            $"{trialTimeRel:F2}," +
+            $"{x},{y},{z}," +
+            $"{ld}," +
+            $"{sp}," +
+            $"{endedInt}," +
+            $"{CsvEscape(trialEndReason)}," +
+            $"{trialEndTimeAbs:F2}," +
+            $"{trialEndTimeRel:F2}," +
+            $"{mergeCueTimeRel:F3}," +
+            $"{driverResponseTimeRel:F3}," +
+            $"{reactionTime:F3}," +
+            $"{CsvEscape(responseType)}," +
+            $"{CsvEscape(surveyQuestion)}," +
+            $"{CsvEscape(surveyResponse)}," +
+            $"{surveyRT:F3}";
+
+        try { writer.WriteLine(line); }
+        catch (Exception e)
         {
-            Debug.LogError($"PositionRecorder3: Failed to save file: {e.Message}");
+            Debug.LogError("[PositionRecorder3] Failed writing row: " + e.Message);
         }
+    }
+
+    private void Flush()
+    {
+        try { writer?.Flush(); } catch { }
     }
 
     private static string CsvEscape(string s)
@@ -415,5 +481,29 @@ public class PositionRecorder3 : MonoBehaviour
         bool mustQuote = s.Contains(",") || s.Contains("\"") || s.Contains("\n") || s.Contains("\r");
         if (s.Contains("\"")) s = s.Replace("\"", "\"\"");
         return mustQuote ? $"\"{s}\"" : s;
+    }
+
+    private void OnApplicationQuit()
+    {
+        if (blockInitialized && !blockEnded)
+        {
+            try
+            {
+                WriteMarker("BLOCK_END");
+                Flush();
+                writer?.Close();
+            }
+            catch { }
+        }
+    }
+
+    private void OnGUI()
+    {
+        if (!showSavePathOnScreen) return;
+        if (!blockInitialized) return;
+
+        GUI.Label(new Rect(10, 10, 1400, 22), $"CSV saving to: {runtimeFilePath}");
+        if (samplingEnabled)
+            GUI.Label(new Rect(10, 32, 1400, 22), $"Trial end: press {debugEndKey}   |   Timeout: {(enableTrialTimeout ? trialTimeoutSeconds + "s" : "OFF")}");
     }
 }

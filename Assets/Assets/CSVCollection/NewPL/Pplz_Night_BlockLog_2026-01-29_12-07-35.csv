@@ -1,0 +1,6 @@
+ParticipantID,Block,BlockStartTimeAbs,BlockTimeRel,TrialIndex,TrialType,Expectancy,SignalColor,MergeSide,SceneName,Event,TimeAbs,TrialTimeRel,X,Y,Z,LaneDeviation,SpeedMPH,TrialEnded,TrialEndReason,TrialEndTimeAbs,TrialEndTimeRel,MergeCueTimeRel,DriverResponseTimeRel,ReactionTime,ResponseType,SurveyQuestion,SurveyResponse,SurveyRT
+plz,Night,4.11,0.00,0,Practice,Expected,Red,Right,E_Red_R,TRIAL_START,4.11,0.00,,,,,,0,,-1.00,-1.00,-1.000,-1.000,-1.000,None,,,-1.000
+plz,Night,4.11,2.13,0,Practice,Expected,Red,Right,E_Red_R,TRIAL_END,6.25,2.13,,,,,,1,Manual_P,6.25,2.13,-1.000,-1.000,-1.000,None,,,-1.000
+plz,Night,4.11,3.79,0,Practice,Expected,Red,Right,PostTrialQuestion,SURVEY,7.90,3.79,,,,,,1,Manual_P,6.25,2.13,-1.000,-1.000,-1.000,None,What was the color of the REAR turn signal?,Red,1.640
+plz,Night,4.11,8.99,1,Practice,Expected,Amber,Right,U_Red_L,TRIAL_START,13.11,0.00,,,,,,0,,-1.00,-1.00,-1.000,-1.000,-1.000,None,,,-1.000
+plz,Night,4.11,17.90,1,Practice,Expected,Amber,Right,U_Red_L,BLOCK_END,22.01,8.90,,,,,,0,,-1.00,-1.00,-1.000,-1.000,-1.000,None,,,-1.000
