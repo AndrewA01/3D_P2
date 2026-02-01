@@ -127,7 +127,6 @@ Transform:
   m_Children:
   - {fileID: 7370837915590878887}
   - {fileID: 7370837914943811595}
-  - {fileID: 7370837915652104068}
   m_Father: {fileID: 7370837917045685028}
   m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -1540,6 +1539,8 @@ Transform:
   - {fileID: 7370837915470760614}
   - {fileID: 7370837916960149736}
   - {fileID: 7370837916559757138}
+  - {fileID: 7370837915083520906}
+  - {fileID: 7370837915652104068}
   - {fileID: 7370837917045685028}
   m_Father: {fileID: 7370837915850213128}
   m_RootOrder: 0
@@ -1571,12 +1572,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7370837915083520907}
   m_LocalRotation: {x: -0, y: -0, z: -0.097391, w: 0.9952462}
-  m_LocalPosition: {x: -2.2390003, y: 1.171, z: 0.26560003}
-  m_LocalScale: {x: 0.023154175, y: 0.28673163, z: 0.07918999}
+  m_LocalPosition: {x: -2.2390003, y: 1.1710012, z: 0.26559764}
+  m_LocalScale: {x: 0.023154175, y: 0.2867317, z: 0.07918998}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 4363986581985646423}
-  m_RootOrder: 2
+  m_Father: {fileID: 7370837915069805873}
+  m_RootOrder: 5
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: -11.178}
 --- !u!33 &7370837915083520919
 MeshFilter:
@@ -5754,11 +5755,11 @@ Transform:
   m_GameObject: {fileID: 7370837915652104069}
   m_LocalRotation: {x: -0, y: -0, z: 0.097391814, w: 0.9952462}
   m_LocalPosition: {x: 0.04799989, y: 1.171, z: 0.26560003}
-  m_LocalScale: {x: 0.02315418, y: 0.28673163, z: 0.07919001}
+  m_LocalScale: {x: 0.023154188, y: 0.2867317, z: 0.07919003}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 4983480301546984177}
-  m_RootOrder: 2
+  m_Father: {fileID: 7370837915069805873}
+  m_RootOrder: 6
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 11.178}
 --- !u!33 &7370837915652104065
 MeshFilter:
@@ -7189,8 +7190,8 @@ MonoBehaviour:
   mergeMaxSpeed: 45
   mergeAccel: 10
   coastAfterMerge: 1
-  postMergeTargetSpeed: 25
-  postMergeDecel: 4
+  postMergeTargetSpeedMph: 35
+  postMergeDecelMphPerSec: 10
   lockLaneXAfterMerge: 1
   mergeSteerYawDegrees: 6
   mergeYawLerpSpeedDegPerSec: 240
@@ -7199,6 +7200,7 @@ MonoBehaviour:
   disableWheelCollidersUntilSpawn: 1
   lockYToSpawnHeight: 1
   yLockLerpSpeed: 20
+  turnSignalBlinker: {fileID: 0}
 --- !u!1 &7370837915850613807
 GameObject:
   m_ObjectHideFlags: 0
@@ -16422,7 +16424,7 @@ Transform:
   - {fileID: 4363986581985646423}
   - {fileID: 4983480301546984177}
   m_Father: {fileID: 7370837915069805873}
-  m_RootOrder: 5
+  m_RootOrder: 7
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &7370837917052140991
 GameObject:
@@ -16774,7 +16776,6 @@ Transform:
   m_Children:
   - {fileID: 7370837915536060659}
   - {fileID: 7370837915266875086}
-  - {fileID: 7370837915083520906}
   m_Father: {fileID: 7370837917045685028}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
