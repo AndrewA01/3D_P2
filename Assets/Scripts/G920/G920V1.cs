@@ -1,90 +1,110 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
+using System.Linq;
 
 public class G920V1 : MonoBehaviour
-
 {
-    LogitechGSDK.LogiControllerPropertiesData properties;
-    
-    public float xAxes,GasInput,BreakInput;
+    [Header("Axis Names (Input Manager)")]
+    public string steerAxis = "Horizontal";
+    public string throttleAxis = "Throttle";
+    public string brakeAxis = "Brake";
 
-    [SerializeField] WheelCollider FL;
-    [SerializeField] WheelCollider FR;
-    [SerializeField] WheelCollider RL;
-    [SerializeField] WheelCollider RR;
+    [Header("Keyboard Keys")]
+    public KeyCode keyForward = KeyCode.W;
+    public KeyCode keyBack = KeyCode.S;
+    public KeyCode keyLeft = KeyCode.A;
+    public KeyCode keyRight = KeyCode.D;
 
-    public float acceleration = 600f;
-    public float breakingForce = 250f;
-    public float maxTurnAngle = 15f;
+    [Header("Deadzone Settings")]
+    public float pedalDeadzone = 0.1f;
+    public float steerDeadzone = 0.02f;
 
-    private float currentAcceleration = 0f;
-    private float currentBreakForce = 0f;
-    private float currentTurnAngle = 0f;
+    public float Steer { get; private set; }
+    public float Throttle { get; private set; }
+    public bool G920Connected { get; private set; }
 
-    private void Start()
+    void Update()
     {
-        print(LogitechGSDK.LogiSteeringInitialize(false));
-    }
+        G920Connected = IsG920Connected();
 
-    private void Update()
-    {
-        if (LogitechGSDK.LogiUpdate() && LogitechGSDK.LogiIsConnected(0))
-        {
-            LogitechGSDK.DIJOYSTATE2ENGINES rec;
-            rec = LogitechGSDK.LogiGetStateUnity(0);
+        // ---------- STEERING ----------
+        float keyboardSteer = 0f;
+        if (Input.GetKey(keyLeft)) keyboardSteer -= 1f;
+        if (Input.GetKey(keyRight)) keyboardSteer += 1f;
 
-            // STEERING WHEEL
-            xAxes = rec.lX / 32768f;
+        float wheelSteer = 0f;
+        TryGetAxisRaw(steerAxis, out wheelSteer);
 
-            // Gas 
-            if(rec.lY > 0)
-            {
-                GasInput = 0;
-            }
-
-            // Adjust this midpoint?
-            else if(rec.lY < 0)
-            {
-                GasInput = rec.lY / -32768f;
-            }
-
-            // Break 
-            if(rec.lRz > 0)
-            {
-                BreakInput = 0;
-            }
-
-            // Adjust this midpoint?
-            else if (rec.lRz < 0)
-            {
-                BreakInput = rec.lRz / -32768f;
-            }
-
-        }
+        if (Mathf.Abs(wheelSteer) > steerDeadzone)
+            Steer = wheelSteer;
         else
+            Steer = keyboardSteer;
+
+        // ---------- THROTTLE ----------
+        float keyboardThrottle = 0f;
+        if (Input.GetKey(keyForward)) keyboardThrottle += 1f;
+        if (Input.GetKey(keyBack)) keyboardThrottle -= 1f;
+
+        float throttle = 0f;
+        float brake = 0f;
+
+        bool hasThrottle = TryGetAxisRaw(throttleAxis, out throttle);
+        bool hasBrake = TryGetAxisRaw(brakeAxis, out brake);
+
+        float wheelThrottle = 0f;
+
+        if (hasThrottle || hasBrake)
         {
-            print("No steering wheel?");
+            float throttle01 = NormalizeTo01(throttle);
+            float brake01 = NormalizeTo01(brake);
+
+            if (G920Connected)
+            {
+                throttle01 = ApplyDeadzone(throttle01, pedalDeadzone);
+                brake01 = ApplyDeadzone(brake01, pedalDeadzone);
+            }
+
+            wheelThrottle = throttle01 - brake01;
+        }
+
+        Throttle = Mathf.Abs(keyboardThrottle) > 0.01f
+            ? keyboardThrottle
+            : wheelThrottle;
+
+        // Final safety: kill reverse creep
+        if (G920Connected && Mathf.Abs(Throttle) < pedalDeadzone)
+            Throttle = 0f;
+    }
+
+    bool IsG920Connected()
+    {
+        var names = Input.GetJoystickNames();
+        return names.Any(n =>
+            !string.IsNullOrEmpty(n) &&
+            (n.ToLower().Contains("g920") || n.ToLower().Contains("logitech")));
+    }
+
+    bool TryGetAxisRaw(string axis, out float value)
+    {
+        try
+        {
+            value = Input.GetAxisRaw(axis);
+            return true;
+        }
+        catch
+        {
+            value = 0f;
+            return false;
         }
     }
-        private void FixedUpdate()
+
+    float NormalizeTo01(float v)
     {
-        currentAcceleration = acceleration * GasInput;
-        currentBreakForce = breakingForce * BreakInput;
+        return Mathf.Clamp01((v + 1f) * 0.5f);
+    }
 
-        FL.motorTorque = currentAcceleration;
-        FR.motorTorque = currentAcceleration;
-        RL.motorTorque = currentAcceleration;
-        RR.motorTorque = currentAcceleration;
-
-        FL.brakeTorque = currentBreakForce;
-        FR.brakeTorque = currentBreakForce;
-        RL.brakeTorque = currentBreakForce;
-        RR.brakeTorque = currentBreakForce;
-
-        // STEERING
-        currentTurnAngle = maxTurnAngle * xAxes;
-        FL.steerAngle = currentTurnAngle;
-        FR.steerAngle = currentTurnAngle;
+    float ApplyDeadzone(float v, float dz)
+    {
+        if (v < dz) return 0f;
+        return (v - dz) / (1f - dz);
     }
 }

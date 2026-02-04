@@ -11,6 +11,9 @@ public class MWS : MonoBehaviour
     public float breakingForce = 250f;
     public float maxTurnAngle = 15f;
 
+    [Header("INPUT SOURCE")]
+    [SerializeField] G920V1 input;   // drag your G920V1 component here (or auto-find below)
+
     [Header("DEBUG INPUT")]
     [SerializeField] float verticalInput;
     [SerializeField] float horizontalInput;
@@ -19,10 +22,25 @@ public class MWS : MonoBehaviour
     float currentBreakForce = 0f;
     float currentTurnAngle = 0f;
 
+    void Awake()
+    {
+        if (!input) input = FindFirstObjectByType<G920V1>();
+    }
+
     void Update()
     {
-        verticalInput = Input.GetAxis("Vertical");
-        horizontalInput = Input.GetAxis("Horizontal");
+        // Use filtered wheel+keyboard values (prevents reverse creep)
+        if (input)
+        {
+            verticalInput = input.Throttle;
+            horizontalInput = input.Steer;
+        }
+        else
+        {
+            // fallback if G920V1 isn't present
+            verticalInput = Input.GetAxis("Vertical");
+            horizontalInput = Input.GetAxis("Horizontal");
+        }
     }
 
     void FixedUpdate()
@@ -36,30 +54,5 @@ public class MWS : MonoBehaviour
 
         FL.steerAngle = currentTurnAngle;
         FR.steerAngle = currentTurnAngle;
-
-        // ---- DEBUG ONCE PER SECOND ----
-        if (Time.frameCount % 60 == 0)
-        {
-            DebugWheel("FL", FL);
-            DebugWheel("FR", FR);
-            DebugWheel("RL", RL);
-            DebugWheel("RR", RR);
-
-            var rb = GetComponentInParent<Rigidbody>() ?? GetComponent<Rigidbody>();
-            if (rb)
-            {
-                Debug.Log($"RB: vel={rb.velocity.magnitude:F2} kinematic={rb.isKinematic} constraints={rb.constraints}");
-            }
-        }
-    }
-
-    void DebugWheel(string name, WheelCollider wc)
-    {
-        if (!wc) { Debug.Log($"{name}: MISSING"); return; }
-
-        WheelHit hit;
-        bool grounded = wc.GetGroundHit(out hit);
-
-        Debug.Log($"{name}: grounded={grounded} rpm={wc.rpm:F1} torque={wc.motorTorque:F1} brake={wc.brakeTorque:F1}");
     }
 }
