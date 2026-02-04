@@ -1,180 +1,125 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>
-/// TurnSignalBlinkerSimpleV2 (Robust Material Swap)
-///
-/// Fixes common Unity hierarchy cases:
-/// - Signal objects named LTURN/RTURN are parents, while MeshRenderer is on children with different names.
-/// - This script assigns renderers if THEY OR ANY PARENT in their transform chain contains "LTURN" or "RTURN".
-///
-/// Blinking behavior:
-/// - Only swaps materials in slots that already use either offMaterial or onMaterial (so it won't repaint the whole car).
-/// - Starts/stops via OnMergeStarted / OnMergeEnded (called by MoveOnWaypoints).
-/// </summary>
 public class TurnSignalBlinkerSimpleV2 : MonoBehaviour
 {
-    [Header("Blink settings")]
+    [Header("Blink")]
     [SerializeField] private float blinkIntervalSeconds = 0.5f;
 
-    [Header("Materials (required)")]
-    [SerializeField] private Material offMaterial; // redoff / amboff
-    [SerializeField] private Material onMaterial;  // redon  / ambon
+    [Header("PRIMARY (this object + children) Materials")]
+    [SerializeField] private Material primaryOffMaterial;   // e.g., AMBEROFF
+    [SerializeField] private Material primaryOnMaterial;    // e.g., AMBERON
 
-    // Renderers whose transform chain contains LTURN or RTURN
-    private readonly List<Renderer> signalRenderers = new List<Renderer>();
+    [Header("Optional Extra Root (e.g., rear turn signal subtree)")]
+    [SerializeField] private Transform extraRoot;
 
-    // For each renderer, which material indices should be swapped (only those matching off/on)
-    private readonly Dictionary<Renderer, int[]> swappableSlots = new Dictionary<Renderer, int[]>();
+    [Header("EXTRA ROOT Materials")]
+    [SerializeField] private Material extraOffMaterial;     // e.g., REDOFF
+    [SerializeField] private Material extraOnMaterial;      // e.g., REDON
+
+    private Renderer[] primaryRenderers;
+    private Renderer[] extraRenderers;
 
     private Coroutine blinkRoutine;
-    private bool blinking;
-    private bool stateOn;
+    private bool isOn;
 
     private void Awake()
     {
-        CacheSignalRenderers();
-        ForceOff();
+        CacheRenderers();
+        Apply(primaryOffMaterial, extraOffMaterial);
+    }
+
+    private void OnEnable()
+    {
+        CacheRenderers();
     }
 
     private void OnDisable()
     {
-        StopBlinking();
+        OnMergeEnded();
     }
 
     // Called by MoveOnWaypoints
-    public void OnMergeStarted() => StartBlinking();
-    public void OnMergeEnded() => StopBlinking();
-
-    public void StartBlinking()
+    public void OnMergeStarted()
     {
-        if (blinking) return;
+        if (blinkRoutine != null) return;
 
-        if (offMaterial == null || onMaterial == null)
-            return;
+        // Primary must be set to blink primary.
+        if (primaryOffMaterial == null || primaryOnMaterial == null) return;
 
-        // If something changed in prefab/hierarchy, refresh once at start
-        if (signalRenderers.Count == 0 || swappableSlots.Count == 0)
-            CacheSignalRenderers();
+        // Extra pair is only required if extraRoot is set.
+        if (extraRoot != null && (extraOffMaterial == null || extraOnMaterial == null)) return;
 
-        blinking = true;
-        stateOn = false;
+        if ((primaryRenderers == null || primaryRenderers.Length == 0) ||
+            (extraRoot != null && (extraRenderers == null || extraRenderers.Length == 0)))
+        {
+            CacheRenderers();
+        }
 
-        if (blinkRoutine != null)
-            StopCoroutine(blinkRoutine);
-
+        isOn = false;
         blinkRoutine = StartCoroutine(BlinkLoop());
     }
 
-    public void StopBlinking()
+    // Called by MoveOnWaypoints
+    public void OnMergeEnded()
     {
-        blinking = false;
-
         if (blinkRoutine != null)
         {
             StopCoroutine(blinkRoutine);
             blinkRoutine = null;
         }
 
-        ForceOff();
+        Apply(primaryOffMaterial, extraOffMaterial);
     }
 
     private IEnumerator BlinkLoop()
     {
-        while (blinking)
+        while (true)
         {
-            stateOn = !stateOn;
-            Apply(stateOn ? onMaterial : offMaterial);
+            isOn = !isOn;
+
+            Apply(
+                isOn ? primaryOnMaterial : primaryOffMaterial,
+                extraRoot != null ? (isOn ? extraOnMaterial : extraOffMaterial) : null
+            );
+
             yield return new WaitForSecondsRealtime(blinkIntervalSeconds);
         }
     }
 
-    private void ForceOff()
+    private void CacheRenderers()
     {
-        if (offMaterial == null) return;
-        Apply(offMaterial);
+        primaryRenderers = GetComponentsInChildren<Renderer>(true);
+
+        extraRenderers = extraRoot != null
+            ? extraRoot.GetComponentsInChildren<Renderer>(true)
+            : new Renderer[0];
     }
 
-    private void Apply(Material target)
+    private void Apply(Material primaryMat, Material extraMat)
     {
-        if (target == null) return;
+        // Primary subtree (this object + children)
+        SetAllSlots(primaryRenderers, primaryMat);
 
-        for (int i = 0; i < signalRenderers.Count; i++)
+        // Extra subtree
+        if (extraRoot != null)
+            SetAllSlots(extraRenderers, extraMat);
+    }
+
+    private void SetAllSlots(Renderer[] renderers, Material mat)
+    {
+        if (mat == null || renderers == null) return;
+
+        for (int i = 0; i < renderers.Length; i++)
         {
-            Renderer r = signalRenderers[i];
+            var r = renderers[i];
             if (!r) continue;
 
-            if (!swappableSlots.TryGetValue(r, out int[] slots) || slots == null || slots.Length == 0)
-                continue;
-
-            // Use instanced materials so we don't mutate shared assets globally
             Material[] mats = r.materials;
-            bool changed = false;
+            for (int m = 0; m < mats.Length; m++)
+                mats[m] = mat;
 
-            for (int s = 0; s < slots.Length; s++)
-            {
-                int idx = slots[s];
-                if (idx < 0 || idx >= mats.Length) continue;
-                if (mats[idx] == target) continue;
-
-                mats[idx] = target;
-                changed = true;
-            }
-
-            if (changed)
-                r.materials = mats;
+            r.materials = mats;
         }
-    }
-
-    private void CacheSignalRenderers()
-    {
-        signalRenderers.Clear();
-        swappableSlots.Clear();
-
-        // Find all renderers under this component
-        Renderer[] all = GetComponentsInChildren<Renderer>(true);
-
-        for (int i = 0; i < all.Length; i++)
-        {
-            Renderer r = all[i];
-            if (!r) continue;
-
-            // Only consider renderers that are under LTURN or RTURN (parent chain match)
-            if (!IsUnderNamedChain(r.transform, "lturn") && !IsUnderNamedChain(r.transform, "rturn"))
-                continue;
-
-            // Determine which material slots are intended to be toggled:
-            // Only slots currently using offMaterial or onMaterial.
-            Material[] shared = r.sharedMaterials;
-            if (shared == null || shared.Length == 0) continue;
-
-            List<int> slots = new List<int>();
-            for (int m = 0; m < shared.Length; m++)
-            {
-                if (shared[m] == offMaterial || shared[m] == onMaterial)
-                    slots.Add(m);
-            }
-
-            // If no slots match, we don't touch this renderer (prevents repainting whole car)
-            if (slots.Count == 0) continue;
-
-            signalRenderers.Add(r);
-            swappableSlots[r] = slots.ToArray();
-        }
-    }
-
-    private bool IsUnderNamedChain(Transform t, string needleLower)
-    {
-        Transform cur = t;
-        while (cur != null)
-        {
-            if (cur.name != null && cur.name.ToLowerInvariant().Contains(needleLower))
-                return true;
-
-            if (cur == transform) break;
-            cur = cur.parent;
-        }
-        return false;
     }
 }

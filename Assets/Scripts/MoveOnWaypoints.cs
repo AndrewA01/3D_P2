@@ -85,7 +85,7 @@ public class MoveOnWaypoints : MonoBehaviour
             hasLastPlayerPos = true;
         }
 
-        // ✅ Auto-find blinker on self, children, OR parent (covers "empty wrapper has it" case)
+        // Auto-find blinker on self, children, OR parent (covers "empty wrapper has it" case)
         if (turnSignal == null)
         {
             turnSignal = GetComponent<TurnSignalBlinkerSimpleV2>();
@@ -117,102 +117,102 @@ public class MoveOnWaypoints : MonoBehaviour
         switch (phase)
         {
             case Phase.HoldAtSpawn:
-                {
-                    holdTimer += dt;
-                    pos.x = phase1SpawnX;
-                    rb.MovePosition(pos);
+            {
+                holdTimer += dt;
+                pos.x = phase1SpawnX;
+                rb.MovePosition(pos);
 
-                    if (holdTimer >= phase1HoldSeconds)
-                        phase = Phase.FollowAdjacentBehind;
-                    break;
-                }
+                if (holdTimer >= phase1HoldSeconds)
+                    phase = Phase.FollowAdjacentBehind;
+                break;
+            }
 
             case Phase.FollowAdjacentBehind:
+            {
+                if (!player) break;
+
+                pos.x = Mathf.MoveTowards(pos.x, adjacentLaneX, lateralSpeed * dt);
+
+                float playerZ = player.position.z;
+                float gap = playerZ - pos.z;
+
+                float error = gap - gapBehindMeters;
+                if (gap < minGapMeters) error = gap - minGapMeters;
+
+                float playerSpeed = GetPlayerForwardSpeed(dt);
+
+                float targetSpeed = playerSpeed + error * gapKp;
+                targetSpeed = Mathf.Clamp(
+                    targetSpeed,
+                    playerSpeed - maxSpeedDeltaFromPlayer,
+                    playerSpeed + maxSpeedDeltaFromPlayer
+                );
+                targetSpeed = Mathf.Clamp(targetSpeed, 0f, maxSpeed);
+
+                currentSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, accel * dt);
+
+                pos.z += currentSpeed * dt;
+                rb.MovePosition(pos);
+
+                // Merge trigger moment = cue moment: start blinking here
+                if (!mergeTriggered && Time.time >= mergeTriggerTime)
                 {
-                    if (!player) break;
+                    mergeTriggered = true;
+                    phase = Phase.PreMergeGetLead;
 
-                    pos.x = Mathf.MoveTowards(pos.x, adjacentLaneX, lateralSpeed * dt);
-
-                    float playerZ = player.position.z;
-                    float gap = playerZ - pos.z;
-
-                    float error = gap - gapBehindMeters;
-                    if (gap < minGapMeters) error = gap - minGapMeters;
-
-                    float playerSpeed = GetPlayerForwardSpeed(dt);
-
-                    float targetSpeed = playerSpeed + error * gapKp;
-                    targetSpeed = Mathf.Clamp(
-                        targetSpeed,
-                        playerSpeed - maxSpeedDeltaFromPlayer,
-                        playerSpeed + maxSpeedDeltaFromPlayer
-                    );
-                    targetSpeed = Mathf.Clamp(targetSpeed, 0f, maxSpeed);
-
-                    currentSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, accel * dt);
-
-                    pos.z += currentSpeed * dt;
-                    rb.MovePosition(pos);
-
-                    // ✅ Merge trigger moment = cue moment: start blinking here
-                    if (!mergeTriggered && Time.time >= mergeTriggerTime)
-                    {
-                        mergeTriggered = true;
-                        phase = Phase.PreMergeGetLead;
-
-                        if (turnSignal != null) turnSignal.OnMergeStarted();
-                    }
-                    break;
+                    if (turnSignal != null) turnSignal.OnMergeStarted();
                 }
+                break;
+            }
 
             case Phase.PreMergeGetLead:
+            {
+                if (!player) break;
+
+                pos.x = Mathf.MoveTowards(pos.x, adjacentLaneX, lateralSpeed * dt);
+
+                float playerZ = player.position.z;
+                float lead = pos.z - playerZ;
+
+                float playerSpeed = GetPlayerForwardSpeed(dt);
+                float desiredSpeed = Mathf.Min(maxSpeed, playerSpeed + maxSpeedDeltaFromPlayer);
+
+                if (lead >= mergeStartLeadMeters)
                 {
-                    if (!player) break;
-
-                    pos.x = Mathf.MoveTowards(pos.x, adjacentLaneX, lateralSpeed * dt);
-
-                    float playerZ = player.position.z;
-                    float lead = pos.z - playerZ;
-
-                    float playerSpeed = GetPlayerForwardSpeed(dt);
-                    float desiredSpeed = Mathf.Min(maxSpeed, playerSpeed + maxSpeedDeltaFromPlayer);
-
-                    if (lead >= mergeStartLeadMeters)
-                    {
-                        phase = Phase.MergeLateral;
-                    }
-                    else
-                    {
-                        currentSpeed = Mathf.MoveTowards(currentSpeed, desiredSpeed, accel * dt);
-                    }
-
-                    pos.z += currentSpeed * dt;
-                    rb.MovePosition(pos);
-                    break;
+                    phase = Phase.MergeLateral;
                 }
+                else
+                {
+                    currentSpeed = Mathf.MoveTowards(currentSpeed, desiredSpeed, accel * dt);
+                }
+
+                pos.z += currentSpeed * dt;
+                rb.MovePosition(pos);
+                break;
+            }
 
             case Phase.MergeLateral:
+            {
+                pos.x = Mathf.MoveTowards(pos.x, mergeTargetX, mergeLateralSpeed * dt);
+                pos.z += currentSpeed * dt;
+                rb.MovePosition(pos);
+
+                if (Mathf.Abs(pos.x - mergeTargetX) < 0.01f)
                 {
-                    pos.x = Mathf.MoveTowards(pos.x, mergeTargetX, mergeLateralSpeed * dt);
-                    pos.z += currentSpeed * dt;
-                    rb.MovePosition(pos);
+                    phase = Phase.PostMerge;
 
-                    if (Mathf.Abs(pos.x - mergeTargetX) < 0.01f)
-                    {
-                        phase = Phase.PostMerge;
-
-                        // ✅ Stop blinking when merge completes
-                        if (turnSignal != null) turnSignal.OnMergeEnded();
-                    }
-                    break;
+                    // Stop blinking when merge completes
+                    if (turnSignal != null) turnSignal.OnMergeEnded();
                 }
+                break;
+            }
 
             case Phase.PostMerge:
-                {
-                    pos.z += currentSpeed * dt;
-                    rb.MovePosition(pos);
-                    break;
-                }
+            {
+                pos.z += currentSpeed * dt;
+                rb.MovePosition(pos);
+                break;
+            }
         }
     }
 

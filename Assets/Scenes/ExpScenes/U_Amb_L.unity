@@ -46762,16 +46762,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8c18d9e697f7f894b818f9978fb4f2bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  xAxes: 0
-  GasInput: 0
-  BreakInput: 0
-  FL: {fileID: 186789986}
-  FR: {fileID: 344905713}
-  RL: {fileID: 1745738970}
-  RR: {fileID: 328533476}
-  acceleration: 750
-  breakingForce: 4000
-  maxTurnAngle: 15
+  steerAxis: Horizontal
+  throttleAxis: Throttle
+  brakeAxis: Brake
+  keyForward: 119
+  keyBack: 115
+  keyLeft: 97
+  keyRight: 100
+  pedalDeadzone: 0.1
+  steerDeadzone: 0.02
 --- !u!114 &469792365
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -46791,6 +46790,7 @@ MonoBehaviour:
   acceleration: 750
   breakingForce: 4000
   maxTurnAngle: 15
+  input: {fileID: 0}
   verticalInput: 0
   horizontalInput: 0
 --- !u!114 &469792366
@@ -92495,6 +92495,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents:
     - {fileID: 5883833981592944823, guid: 0b37c26c77467174c8446cfd54f6958c, type: 3}
+    - {fileID: 3634756717036463774, guid: 0b37c26c77467174c8446cfd54f6958c, type: 3}
   m_SourcePrefab: {fileID: 100100000, guid: 0b37c26c77467174c8446cfd54f6958c, type: 3}
 --- !u!1 &918707103 stripped
 GameObject:
@@ -92513,14 +92514,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 14a2d549d91246f4fa74b3815bab0119, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  targetObject: {fileID: 918707103}
-  materialOn: {fileID: 2100000, guid: 7ac30b3ea32b1fc46b56c834ef2cff10, type: 2}
-  materialOff: {fileID: 2100000, guid: 7be193bfe2852b94ba8b07a2e2ec8cab, type: 2}
   blinkIntervalSeconds: 0.5
-  startBlinkingOnStart: 0
+  primaryOffMaterial: {fileID: 2100000, guid: 7be193bfe2852b94ba8b07a2e2ec8cab, type: 2}
+  primaryOnMaterial: {fileID: 2100000, guid: 7ac30b3ea32b1fc46b56c834ef2cff10, type: 2}
+  extraRoot: {fileID: 918707106}
+  extraOffMaterial: {fileID: 2100000, guid: 7be193bfe2852b94ba8b07a2e2ec8cab, type: 2}
+  extraOnMaterial: {fileID: 2100000, guid: 7ac30b3ea32b1fc46b56c834ef2cff10, type: 2}
 --- !u!1 &918707105 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 798005447500897540, guid: 0b37c26c77467174c8446cfd54f6958c, type: 3}
+  m_PrefabInstance: {fileID: 918707102}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &918707106 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 7913465338034260126, guid: 0b37c26c77467174c8446cfd54f6958c, type: 3}
   m_PrefabInstance: {fileID: 918707102}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &918895112
