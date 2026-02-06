@@ -13,7 +13,10 @@ public class MoveOnWaypoints : MonoBehaviour
     public float phase1HoldSeconds = 1f;
     public float spawnYawDegrees = 0f;
 
-    [Header("Phase 2: Pre-merge (combined)")]
+    [Tooltip("How far behind the player the bot should be when it FIRST becomes visible (Phase 1).")]
+    public float spawnGapBehindMeters = 7f;
+
+    [Header("Phase 2: Adjacent Lane Follow")]
     public float adjacentLaneX = 5.27f;
     public float lateralSpeed = 3f;
     public float gapBehindMeters = 7f;
@@ -25,16 +28,18 @@ public class MoveOnWaypoints : MonoBehaviour
     public float maxSpeedDeltaFromPlayer = 10f;
     public float maxSpeed = 75f;
 
-    [Header("Phase 3: Merge Event (feel is controlled ONLY by mergeLateralSpeed)")]
+    [Header("Phase 3: Merge (lateral)")]
     public float mergeTargetX = 0f;
     public float mergeLateralSpeed = 1f;
-    public float mergeLeadMeters = 10f;        // kept for inspector compatibility
     public float mergeStartLeadMeters = 10f;
 
     [Header("Turn Signal (optional)")]
-    public TurnSignalBlinkerSimpleV2 turnSignal; // auto-found in Awake()
+    public TurnSignalBlinkerSimpleV2 turnSignal;
 
-    // -------- internal --------
+    [Header("WheelCollider Stability (recommended if bot has WheelColliders)")]
+    [Tooltip("If true, wheel colliders will be disabled while hidden + during the brief hold to prevent suspension jitter, then re-enabled.")]
+    public bool disableWheelCollidersUntilHoldEnds = true;
+
     private Rigidbody rb;
     private bool spawned;
     private float spawnTimer;
@@ -47,6 +52,7 @@ public class MoveOnWaypoints : MonoBehaviour
 
     private Renderer[] cachedRenderers;
     private Collider[] cachedColliders;
+    private WheelCollider[] wheelColliders;
 
     private Vector3 lastPlayerPos;
     private bool hasLastPlayerPos;
@@ -74,9 +80,11 @@ public class MoveOnWaypoints : MonoBehaviour
 
         cachedRenderers = GetComponentsInChildren<Renderer>(true);
         cachedColliders = GetComponentsInChildren<Collider>(true);
+        wheelColliders = GetComponentsInChildren<WheelCollider>(true);
 
         SetVisible(false);
         SetCollidersEnabled(false);
+        SetWheelCollidersEnabled(false);
 
         ResolvePlayer();
         if (player != null)
@@ -85,14 +93,11 @@ public class MoveOnWaypoints : MonoBehaviour
             hasLastPlayerPos = true;
         }
 
-        // Auto-find blinker on self, children, OR parent (covers "empty wrapper has it" case)
         if (turnSignal == null)
         {
-            turnSignal = GetComponent<TurnSignalBlinkerSimpleV2>();
-            if (turnSignal == null)
-                turnSignal = GetComponentInChildren<TurnSignalBlinkerSimpleV2>(true);
-            if (turnSignal == null)
-                turnSignal = GetComponentInParent<TurnSignalBlinkerSimpleV2>(true);
+            turnSignal = GetComponent<TurnSignalBlinkerSimpleV2>()
+                      ?? GetComponentInChildren<TurnSignalBlinkerSimpleV2>(true)
+                      ?? GetComponentInParent<TurnSignalBlinkerSimpleV2>(true);
         }
     }
 
@@ -118,12 +123,28 @@ public class MoveOnWaypoints : MonoBehaviour
         {
             case Phase.HoldAtSpawn:
             {
-                holdTimer += dt;
+                // KEY: during the hold, keep X at spawn, but ALSO keep moving forward at player speed.
+                // This avoids hard-snapping Z (reduces WheelCollider jitter) while still speed-matching.
+                float playerSpeed = GetPlayerForwardSpeed(dt);
+                playerSpeed = Mathf.Clamp(playerSpeed, 0f, maxSpeed);
+
+                currentSpeed = Mathf.MoveTowards(currentSpeed, playerSpeed, accel * dt);
+
                 pos.x = phase1SpawnX;
+                pos.z += currentSpeed * dt;
+
                 rb.MovePosition(pos);
 
+                holdTimer += dt;
                 if (holdTimer >= phase1HoldSeconds)
+                {
+                    if (disableWheelCollidersUntilHoldEnds) SetWheelCollidersEnabled(true);
+
+                    // Optional: hard-set once at hold end so Phase 2 starts nicely speed-matched.
+                    currentSpeed = Mathf.Clamp(GetPlayerForwardSpeed(dt), 0f, maxSpeed);
+
                     phase = Phase.FollowAdjacentBehind;
+                }
                 break;
             }
 
@@ -133,17 +154,14 @@ public class MoveOnWaypoints : MonoBehaviour
 
                 pos.x = Mathf.MoveTowards(pos.x, adjacentLaneX, lateralSpeed * dt);
 
-                float playerZ = player.position.z;
-                float gap = playerZ - pos.z;
-
+                float gap = player.position.z - pos.z;
                 float error = gap - gapBehindMeters;
                 if (gap < minGapMeters) error = gap - minGapMeters;
 
-                float playerSpeed = GetPlayerForwardSpeed(dt);
+                float playerSpeed = Mathf.Clamp(GetPlayerForwardSpeed(dt), 0f, maxSpeed);
 
-                float targetSpeed = playerSpeed + error * gapKp;
-                targetSpeed = Mathf.Clamp(
-                    targetSpeed,
+                float targetSpeed = Mathf.Clamp(
+                    playerSpeed + error * gapKp,
                     playerSpeed - maxSpeedDeltaFromPlayer,
                     playerSpeed + maxSpeedDeltaFromPlayer
                 );
@@ -154,12 +172,10 @@ public class MoveOnWaypoints : MonoBehaviour
                 pos.z += currentSpeed * dt;
                 rb.MovePosition(pos);
 
-                // Merge trigger moment = cue moment: start blinking here
                 if (!mergeTriggered && Time.time >= mergeTriggerTime)
                 {
                     mergeTriggered = true;
                     phase = Phase.PreMergeGetLead;
-
                     if (turnSignal != null) turnSignal.OnMergeStarted();
                 }
                 break;
@@ -171,20 +187,14 @@ public class MoveOnWaypoints : MonoBehaviour
 
                 pos.x = Mathf.MoveTowards(pos.x, adjacentLaneX, lateralSpeed * dt);
 
-                float playerZ = player.position.z;
-                float lead = pos.z - playerZ;
-
-                float playerSpeed = GetPlayerForwardSpeed(dt);
-                float desiredSpeed = Mathf.Min(maxSpeed, playerSpeed + maxSpeedDeltaFromPlayer);
+                float lead = pos.z - player.position.z;
+                float desiredSpeed = Mathf.Min(maxSpeed,
+                    Mathf.Clamp(GetPlayerForwardSpeed(dt), 0f, maxSpeed) + maxSpeedDeltaFromPlayer);
 
                 if (lead >= mergeStartLeadMeters)
-                {
                     phase = Phase.MergeLateral;
-                }
                 else
-                {
                     currentSpeed = Mathf.MoveTowards(currentSpeed, desiredSpeed, accel * dt);
-                }
 
                 pos.z += currentSpeed * dt;
                 rb.MovePosition(pos);
@@ -200,8 +210,6 @@ public class MoveOnWaypoints : MonoBehaviour
                 if (Mathf.Abs(pos.x - mergeTargetX) < 0.01f)
                 {
                     phase = Phase.PostMerge;
-
-                    // Stop blinking when merge completes
                     if (turnSignal != null) turnSignal.OnMergeEnded();
                 }
                 break;
@@ -220,42 +228,51 @@ public class MoveOnWaypoints : MonoBehaviour
     {
         if (!player) return;
 
+        // Hidden: park exactly at spawn pose (prevents flash), wheel colliders OFF.
         Vector3 pos = rb.position;
+        pos.x = phase1SpawnX;
+        pos.z = player.position.z - spawnGapBehindMeters;
 
-        pos.x = Mathf.MoveTowards(pos.x, adjacentLaneX, lateralSpeed * dt);
+        rb.position = pos;
+        rb.rotation = Quaternion.Euler(0f, spawnYawDegrees, 0f);
 
-        float desiredZ = player.position.z - gapBehindMeters;
-        pos.z = desiredZ;
-
-        rb.MovePosition(pos);
-
-        float playerSpeed = GetPlayerForwardSpeed(dt);
-        currentSpeed = Mathf.Clamp(playerSpeed, 0f, maxSpeed);
+        currentSpeed = Mathf.Clamp(GetPlayerForwardSpeed(dt), 0f, maxSpeed);
     }
 
     private void SpawnVisibleNow()
     {
         spawned = true;
 
+        if (player != null)
+        {
+            Vector3 pos = rb.position;
+            pos.x = phase1SpawnX;
+            pos.z = player.position.z - spawnGapBehindMeters;
+
+            rb.position = pos;
+            rb.rotation = Quaternion.Euler(0f, spawnYawDegrees, 0f);
+
+            currentSpeed = Mathf.Clamp(GetPlayerForwardSpeed(Time.fixedDeltaTime), 0f, maxSpeed);
+        }
+
+        Physics.SyncTransforms();
+
         SetVisible(true);
         SetCollidersEnabled(true);
 
-        rb.isKinematic = true;
-        rb.MoveRotation(Quaternion.Euler(0f, spawnYawDegrees, 0f));
+        // Keep wheel colliders OFF briefly so suspension doesn't oscillate on spawn.
+        if (!disableWheelCollidersUntilHoldEnds) SetWheelCollidersEnabled(true);
 
         holdTimer = 0f;
         phase = Phase.HoldAtSpawn;
 
-        // Merge trigger time starts after spawn
         mergeTriggerTime = Time.time + Random.Range(15f, 45f);
         mergeTriggered = false;
     }
 
     private void ResolvePlayer()
     {
-        if (player != null) return;
-        if (!autoFindPlayerByTag) return;
-
+        if (player != null || !autoFindPlayerByTag) return;
         GameObject p = GameObject.FindGameObjectWithTag(playerTag);
         if (p) player = p.transform;
     }
@@ -281,17 +298,23 @@ public class MoveOnWaypoints : MonoBehaviour
 
     private void SetVisible(bool visible)
     {
-        if (cachedRenderers == null) return;
-        for (int i = 0; i < cachedRenderers.Length; i++)
-            if (cachedRenderers[i] != null)
-                cachedRenderers[i].enabled = visible;
+        foreach (var r in cachedRenderers)
+            if (r != null) r.enabled = visible;
     }
 
     private void SetCollidersEnabled(bool enabled)
     {
-        if (cachedColliders == null) return;
-        for (int i = 0; i < cachedColliders.Length; i++)
-            if (cachedColliders[i] != null)
-                cachedColliders[i].enabled = enabled;
+        foreach (var c in cachedColliders)
+            if (c != null) c.enabled = enabled;
+    }
+
+    private void SetWheelCollidersEnabled(bool enabled)
+    {
+        if (wheelColliders == null) return;
+        for (int i = 0; i < wheelColliders.Length; i++)
+        {
+            if (wheelColliders[i] != null)
+                wheelColliders[i].enabled = enabled;
+        }
     }
 }

@@ -1,8 +1,18 @@
+// =======================
+// ExperimentController.cs
+// Drop-in replacement for your current file.
+// Changes vs your earlier version:
+//   - After 4 practice trials, loads SubBlock and shows Practice_Warning overlay
+//   - Participant must press Continue, then 5s countdown runs, then main trials begin
+//   - While Practice_Warning is up, ALL other UI Selectables are disabled (so Start/Dropdown/ID can't be clicked)
+// =======================
+
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using TMPro;
+using UnityEngine.UI;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -75,6 +85,12 @@ public class ExperimentController : MonoBehaviour
     private readonly List<string> trialSceneOrder = new();
     private readonly List<TrialCondition> trialConditions = new();
 
+    // gate between practice and main
+    private bool waitingForMainStart = false;
+
+    // UI disable/restore while warning is visible
+    private readonly List<Selectable> disabledSelectables = new();
+
     public TrialCondition CurrentCondition
     {
         get
@@ -104,6 +120,16 @@ public class ExperimentController : MonoBehaviour
         DontDestroyOnLoad(gameObject);
     }
 
+    private void OnEnable()
+    {
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    private void OnDisable()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
 #if UNITY_EDITOR
     private void OnValidate()
     {
@@ -130,6 +156,7 @@ public class ExperimentController : MonoBehaviour
         BuildTrialConditionSchedule();
 
         experimentRunning = true;
+        waitingForMainStart = false;
         currentTrialIndex = -1;
 
         LoadNextTrial();
@@ -158,9 +185,94 @@ public class ExperimentController : MonoBehaviour
             return;
         }
 
+        // After the last practice trial completes, currentTrialIndex becomes practiceTrialCount (e.g., 4).
+        // Go to SubBlock and show Practice_Warning overlay that requires Continue + countdown.
+        if (currentTrialIndex == practiceTrialCount)
+        {
+            waitingForMainStart = true;
+            Time.timeScale = 0f;
+            SceneManager.LoadScene(subBlockSceneName, LoadSceneMode.Single);
+            return;
+        }
+
         string next = trialSceneOrder[currentTrialIndex];
         Debug.Log($"[ExperimentController] Loading trial {currentTrialIndex}: {next}");
         SceneManager.LoadScene(next, LoadSceneMode.Single);
+    }
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (!waitingForMainStart) return;
+        if (!string.Equals(scene.name, subBlockSceneName, StringComparison.OrdinalIgnoreCase)) return;
+
+        Practice_Warning warning = FindObjectOfType<Practice_Warning>(true);
+
+        if (warning == null)
+        {
+            Debug.LogWarning("[ExperimentController] Practice_Warning not found. Continuing to main trials.");
+            waitingForMainStart = false;
+            Time.timeScale = 1f;
+            LoadCurrentMainTrialScene();
+            return;
+        }
+
+        // Disable all other UI controls so participant can't click Start/Dropdown/ID etc.
+        DisableAllUISelectablesExcept(warning.transform);
+
+        warning.Show(() =>
+        {
+            waitingForMainStart = false;
+
+            RestoreDisabledUISelectables();
+
+            // Defensive: warning also sets this back to 1
+            Time.timeScale = 1f;
+
+            LoadCurrentMainTrialScene();
+        });
+    }
+
+    private void LoadCurrentMainTrialScene()
+    {
+        if (currentTrialIndex < 0 || currentTrialIndex >= trialSceneOrder.Count)
+            return;
+
+        string next = trialSceneOrder[currentTrialIndex];
+        Debug.Log($"[ExperimentController] Starting main trials. Loading trial {currentTrialIndex}: {next}");
+        SceneManager.LoadScene(next, LoadSceneMode.Single);
+    }
+
+    // ===== UI helper: disable every Selectable except those under the Practice_Warning overlay =====
+    private void DisableAllUISelectablesExcept(Transform keepEnabledRoot)
+    {
+        disabledSelectables.Clear();
+
+        Selectable[] all = FindObjectsOfType<Selectable>(true);
+        for (int i = 0; i < all.Length; i++)
+        {
+            Selectable s = all[i];
+            if (s == null) continue;
+
+            // Keep anything that is part of the warning overlay
+            if (keepEnabledRoot != null && s.transform.IsChildOf(keepEnabledRoot))
+                continue;
+
+            if (s.interactable)
+            {
+                s.interactable = false;
+                disabledSelectables.Add(s);
+            }
+        }
+    }
+
+    private void RestoreDisabledUISelectables()
+    {
+        for (int i = 0; i < disabledSelectables.Count; i++)
+        {
+            if (disabledSelectables[i] != null)
+                disabledSelectables[i].interactable = true;
+        }
+        disabledSelectables.Clear();
     }
 
     // ===== Trial Order =====
@@ -211,6 +323,7 @@ public class ExperimentController : MonoBehaviour
             (Expectancy.Unexpected, SignalColor.Amber)
         };
 
+        // 4 practice trials
         foreach (var c in combos)
         {
             trialConditions.Add(new TrialCondition
@@ -222,6 +335,7 @@ public class ExperimentController : MonoBehaviour
             });
         }
 
+        // 16 main trials (each combo 4 times; left twice, right twice)
         foreach (var c in combos)
         {
             for (int i = 0; i < 4; i++)
