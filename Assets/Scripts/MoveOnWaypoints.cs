@@ -40,6 +40,18 @@ public class MoveOnWaypoints : MonoBehaviour
     [Tooltip("If true, wheel colliders will be disabled while hidden + during the brief hold to prevent suspension jitter, then re-enabled.")]
     public bool disableWheelCollidersUntilHoldEnds = true;
 
+    // =========================
+    // Merge Trigger Export (for DataRecorder)
+    // =========================
+    [Header("Merge Trigger Export (for DataRecorder)")]
+    [SerializeField] private bool hasMergeStarted = false;
+
+    [SerializeField] private float mergeStartAbs = -1f;
+
+    // Read-only public access
+    public bool HasMergeStarted => hasMergeStarted;
+    public float MergeStartAbs => mergeStartAbs;
+
     private Rigidbody rb;
     private bool spawned;
     private float spawnTimer;
@@ -174,7 +186,15 @@ public class MoveOnWaypoints : MonoBehaviour
 
                 if (!mergeTriggered && Time.time >= mergeTriggerTime)
                 {
+                    // === MERGE TRIGGER MOMENT (exported) ===
                     mergeTriggered = true;
+
+                    if (!hasMergeStarted)
+                    {
+                        hasMergeStarted = true;
+                        mergeStartAbs = Time.realtimeSinceStartup; // matches DataRecorder TimeAbs
+                    }
+
                     phase = Phase.PreMergeGetLead;
                     if (turnSignal != null) turnSignal.OnMergeStarted();
                 }
@@ -242,6 +262,10 @@ public class MoveOnWaypoints : MonoBehaviour
     private void SpawnVisibleNow()
     {
         spawned = true;
+
+        // Reset merge export each spawn/run
+        hasMergeStarted = false;
+        mergeStartAbs = -1f;
 
         if (player != null)
         {

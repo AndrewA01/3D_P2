@@ -50,14 +50,14 @@ public class DataRecorderV2 : MonoBehaviour
     private string participantID = "UNKNOWN";
     private string blockLabel = "UNKNOWN";
 
-    // You asked for this to restart each new scene
+    // Restart each new scene
     private float blockStartAbs = -1f;
 
     private int currentTrialIndex = -1;
     private float trialStartAbs = -1f;
 
     // Trial metadata from ExperimentController.CurrentCondition
-    private string trialType = "";   // "Practice" or "Main" -> Event column
+    private string trialType = "";
     private string expectancy = "";
     private string signalColor = "";
     private string mergeSide = "";
@@ -80,6 +80,10 @@ public class DataRecorderV2 : MonoBehaviour
 
     // Detect trial end via timescale pause
     private float lastTimeScale = 1f;
+
+    // Car 2 merge tracking
+    private MoveOnWaypoints car2Mover;
+    private bool car2MergeLogged = false; // ensures Car2Marge is a one-row pulse
 
     private void Awake()
     {
@@ -118,7 +122,6 @@ public class DataRecorderV2 : MonoBehaviour
 
     private void OnDisable()
     {
-        // In editor, stopping play mode often triggers OnDisable.
 #if UNITY_EDITOR
         if (!Application.isPlaying) return;
 #endif
@@ -142,11 +145,15 @@ public class DataRecorderV2 : MonoBehaviour
 
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        // Restart BlockStartAbs every scene (per your request)
+        // Restart BlockStartAbs every scene
         blockStartAbs = Time.realtimeSinceStartup;
 
         car = FindInActiveSceneByName(playerObjectName);
         carRb = car != null ? car.GetComponent<Rigidbody>() : null;
+
+        // Refresh Car2 mover reference per scene
+        car2Mover = FindObjectOfType<MoveOnWaypoints>();
+        car2MergeLogged = false;
 
         if (car != null)
         {
@@ -163,11 +170,9 @@ public class DataRecorderV2 : MonoBehaviour
                 Debug.LogWarning($"[DataRecorderV2] '{playerObjectName}' NOT found in scene '{scene.name}'. X/Y/Z will be blank until found. BlockStartAbs reset.");
         }
 
-        // Overlay instances can change per scene
         surveyButtonsHooked = false;
     }
 
-    // Allow external scripts if you want (optional)
     public void SetLaneDeviation(float deviation)
     {
         laneDeviation = deviation;
@@ -192,7 +197,6 @@ public class DataRecorderV2 : MonoBehaviour
             {
                 trialStartAbs = Time.realtimeSinceStartup;
 
-                // reset per-trial end/survey
                 trialEnded = false;
                 trialEndReason = "";
                 trialEndAbs = -1f;
@@ -204,7 +208,6 @@ public class DataRecorderV2 : MonoBehaviour
             }
         }
 
-        // Pull condition directly (this is why Expectancy/SignalColor/MergeSide now fill)
         var cond = ExperimentController.Instance.CurrentCondition;
 
         trialType = cond.isPractice ? "Practice" : "Main";
@@ -215,7 +218,6 @@ public class DataRecorderV2 : MonoBehaviour
 
     private void DetectTrialEndTransition()
     {
-        // Trial ended when timeScale goes to 0 from >0
         if (lastTimeScale > 0f && Time.timeScale == 0f && !trialEnded)
         {
             trialEnded = true;
@@ -223,10 +225,8 @@ public class DataRecorderV2 : MonoBehaviour
             trialEndRel = GetTrialTimeRel();
             trialEndReason = "TrialEnd";
 
-            // Survey starts when overlay appears (roughly when paused)
             surveyStartAbs = Time.realtimeSinceStartup;
 
-            // Buffer an extra row right at end moment
             SampleAndBufferRow();
         }
     }
@@ -279,7 +279,6 @@ public class DataRecorderV2 : MonoBehaviour
         else
             surveyRT = -1f;
 
-        // Buffer an event row at response time
         SampleAndBufferRow();
     }
 
@@ -299,8 +298,43 @@ public class DataRecorderV2 : MonoBehaviour
 
         string sceneName = SceneManager.GetActiveScene().name;
 
-        // Event column is TrialType ("Practice"/"Main")
-        string eventValue = trialType;
+        // SubBlock scenes: blank these fields because they aren't chosen yet
+        bool isSubBlock = !string.IsNullOrWhiteSpace(sceneName) &&
+                          sceneName.ToLowerInvariant().Contains("subblock");
+
+        string eventValue = isSubBlock ? "" : trialType;
+        string expValue = isSubBlock ? "" : expectancy;
+        string colorValue = isSubBlock ? "" : signalColor;
+        string mergeValue = isSubBlock ? "" : mergeSide;
+
+        // SurveyResponseCorrect:
+        // blank if can't evaluate; else 1/0 if matches SignalColor (case-insensitive)
+        string surveyCorrect = "";
+        if (!string.IsNullOrWhiteSpace(surveyResponse) && !string.IsNullOrWhiteSpace(colorValue))
+        {
+            bool match = string.Equals(
+                surveyResponse.Trim(),
+                colorValue.Trim(),
+                StringComparison.OrdinalIgnoreCase
+            );
+            surveyCorrect = match ? "1" : "0";
+        }
+
+        // Inputs (scaled)
+        float steeringInput = GetSteeringScaledMinus100To100(); // -100..100
+        float brakeInput = GetBrakeScaled0To100();              // 0..100
+        float throttleInput = GetThrottleScaled0To100();        // 0..100
+
+        // Car2Marge: one-row pulse at merge trigger moment
+        int car2Marge = 0;
+        if (!car2MergeLogged && car2Mover != null && car2Mover.HasMergeStarted && car2Mover.MergeStartAbs > 0f)
+        {
+            if (timeAbs >= car2Mover.MergeStartAbs)
+            {
+                car2Marge = 1;
+                car2MergeLogged = true;
+            }
+        }
 
         string row =
             Csv(participantID) + "," +
@@ -310,9 +344,9 @@ public class DataRecorderV2 : MonoBehaviour
             currentTrialIndex.ToString() + "," +
             Csv(sceneName) + "," +
             Csv(eventValue) + "," +
-            Csv(expectancy) + "," +
-            Csv(signalColor) + "," +
-            Csv(mergeSide) + "," +
+            Csv(expValue) + "," +
+            Csv(colorValue) + "," +
+            Csv(mergeValue) + "," +
             F(timeAbs) + "," +
             F(trialTimeRel) + "," +
             F(x) + "," +
@@ -325,10 +359,81 @@ public class DataRecorderV2 : MonoBehaviour
             F(trialEndAbs) + "," +
             F(trialEndRel) + "," +
             Csv(surveyResponse) + "," +
-            F(surveyRT) +
+            Csv(surveyCorrect) + "," +
+            F(surveyRT) + "," +
+            F(brakeInput) + "," +
+            F(throttleInput) + "," +
+            F(steeringInput) + "," +
+            car2Marge.ToString() +
             "\n";
 
         buffer.Append(row);
+    }
+
+    private float GetSteeringScaledMinus100To100()
+    {
+        // Prefer wheel/controller axis first (usually mapped)
+        float axis = TryGetAxisRawSafe("Horizontal");
+        if (!float.IsNaN(axis))
+            return Mathf.Clamp(axis * 100f, -100f, 100f);
+
+        // Fallback keyboard
+        float kb = 0f;
+        if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) kb -= 1f;
+        if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) kb += 1f;
+
+        if (Mathf.Abs(kb) > 0f) return kb * 100f;
+        return 0f;
+    }
+
+    private float GetBrakeScaled0To100()
+    {
+        // Prefer wheel brake axis if present
+        float brake01 = TryGetAxis01Safe("Brake");
+        if (!float.IsNaN(brake01))
+            return Mathf.Clamp(brake01 * 100f, 0f, 100f);
+
+        // Keyboard brake fallback (Space)
+        return Input.GetKey(KeyCode.Space) ? 100f : 0f;
+    }
+
+    private float GetThrottleScaled0To100()
+    {
+        // Prefer wheel throttle axis if present
+        float thr01 = TryGetAxis01Safe("Throttle");
+        if (!float.IsNaN(thr01))
+            return Mathf.Clamp(thr01 * 100f, 0f, 100f);
+
+        // Keyboard throttle fallback (W)
+        return Input.GetKey(KeyCode.W) ? 100f : 0f;
+    }
+
+    // -1..1 -> 0..1 conversion (safe). Returns NaN if axis doesn't exist.
+    private float TryGetAxis01Safe(string axisName)
+    {
+        try
+        {
+            float raw = Input.GetAxisRaw(axisName); // often -1..1
+            float v01 = Mathf.Clamp01((raw + 1f) * 0.5f);
+            return v01;
+        }
+        catch
+        {
+            return float.NaN;
+        }
+    }
+
+    // Returns axis raw (-1..1) or NaN if axis doesn't exist.
+    private float TryGetAxisRawSafe(string axisName)
+    {
+        try
+        {
+            return Input.GetAxisRaw(axisName);
+        }
+        catch
+        {
+            return float.NaN;
+        }
     }
 
     private float GetTrialTimeRel()
@@ -356,7 +461,6 @@ public class DataRecorderV2 : MonoBehaviour
             if (!Directory.Exists(fullFolderPath))
                 Directory.CreateDirectory(fullFolderPath);
 
-            // Final refresh so filename uses real values
             RefreshFromExperimentController();
 
             string pid = string.IsNullOrWhiteSpace(participantID) ? "UNKNOWN" : participantID.Trim();
@@ -387,9 +491,6 @@ public class DataRecorderV2 : MonoBehaviour
 
     private string GetHeaderLine()
     {
-        // SurveyQuestion REMOVED.
-        // Event == TrialType (Practice/Main).
-        // Expectancy/SignalColor/MergeSide inserted left of TimeAbs.
         return
             "ParticipantID,Block,BlockStartAbs,BlockTimeRel," +
             "TrialIndex,Scene,Event," +
@@ -397,7 +498,8 @@ public class DataRecorderV2 : MonoBehaviour
             "TimeAbs,TrialTimeRel," +
             "X,Y,Z,LaneDeviation,SpeedMPH," +
             "TrialEnded,TrialEndReason,TrialEndAbs,TrialEndRel," +
-            "SurveyResponse,SurveyRT\n";
+            "SurveyResponse,SurveyResponseCorrect,SurveyRT," +
+            "BrakeInput,ThrottleInput,SteeringInput,Car2Marge\n";
     }
 
     private void ResolveFolderPathOnly()
