@@ -1,0 +1,4 @@
+ParticipantID,Block,BlockStartAbs,BlockTimeRel,TrialIndex,Scene,Event,Expectancy,SignalColor,MergeSide,TimeAbs,TrialTimeRel,X,Y,Z,LaneDeviation,SpeedMPH,TrialEnded,TrialEndReason,TrialEndAbs,TrialEndRel,SurveyResponse,SurveyResponseCorrect,SurveyRT,BrakeInput,ThrottleInput,SteeringInput,Car2Marge
+UNKNOWN,0,3.136,0.029,-1,SubBlock,,,,,3.165,-1,,,,,0,0,,-1,-1,,,-1,50,50,0,0
+UNKNOWN,0,3.136,0.127,-1,SubBlock,,,,,3.263,-1,,,,,0,0,,-1,-1,,,-1,50,50,0,0
+UNKNOWN,0,3.136,1.094,-1,SubBlock,,,,,4.23,-1,,,,,0,0,,-1,-1,,,-1,50,50,0,0

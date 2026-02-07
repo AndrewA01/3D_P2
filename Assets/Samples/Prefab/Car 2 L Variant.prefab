@@ -195,6 +195,10 @@ PrefabInstance:
       propertyPath: m_Mesh
       value: 
       objectReference: {fileID: 0}
+    - target: {fileID: 3017340581818575865, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3017340581858648920, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
       propertyPath: m_Mesh
       value: 
@@ -375,6 +379,14 @@ PrefabInstance:
       propertyPath: m_RootOrder
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 3017340582284096909, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3017340582291167542, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3017340582449371805, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
       propertyPath: m_Materials.Array.data[0]
       value: 
@@ -439,16 +451,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 14a2d549d91246f4fa74b3815bab0119, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  targetRenderers: []
-  materialSlot: 0
-  amberOn: {fileID: 0}
-  amberOff: {fileID: 0}
-  redOn: {fileID: 0}
-  redOff: {fileID: 0}
-  colorMode: 0
   blinkIntervalSeconds: 0.5
-  startBlinkingOnStart: 0
-  useUnscaledTime: 1
+  primaryOffMaterial: {fileID: 0}
+  primaryOnMaterial: {fileID: 0}
+  extraRoot: {fileID: 0}
+  extraOffMaterial: {fileID: 0}
+  extraOnMaterial: {fileID: 0}
 --- !u!1 &5670274005673156938 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3017340580671348596, guid: 53c0eb375c82d79489e98426ef3af5e1, type: 3}
@@ -466,13 +474,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 14a2d549d91246f4fa74b3815bab0119, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  targetRenderers: []
-  materialSlot: 0
-  amberOn: {fileID: 0}
-  amberOff: {fileID: 0}
-  redOn: {fileID: 0}
-  redOff: {fileID: 0}
-  colorMode: 0
   blinkIntervalSeconds: 0.5
-  startBlinkingOnStart: 0
-  useUnscaledTime: 1
+  primaryOffMaterial: {fileID: 0}
+  primaryOnMaterial: {fileID: 0}
+  extraRoot: {fileID: 0}
+  extraOffMaterial: {fileID: 0}
+  extraOnMaterial: {fileID: 0}

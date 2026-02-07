@@ -47,6 +47,14 @@ PrefabInstance:
       propertyPath: m_LocalPosition.z
       value: 0.2323
       objectReference: {fileID: 0}
+    - target: {fileID: 7370837915432931804, guid: 35743e658758b3246b74d0a0c514f7ec, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7370837915441593703, guid: 35743e658758b3246b74d0a0c514f7ec, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 7370837915536060657, guid: 35743e658758b3246b74d0a0c514f7ec, type: 3}
       propertyPath: m_Materials.Array.data[0]
       value: 
@@ -118,6 +126,10 @@ PrefabInstance:
     - target: {fileID: 7370837915663148111, guid: 35743e658758b3246b74d0a0c514f7ec, type: 3}
       propertyPath: m_Mesh
       value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 7370837915772850088, guid: 35743e658758b3246b74d0a0c514f7ec, type: 3}
+      propertyPath: m_Enabled
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7370837915850213128, guid: 35743e658758b3246b74d0a0c514f7ec, type: 3}
       propertyPath: m_RootOrder
@@ -422,8 +434,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 14a2d549d91246f4fa74b3815bab0119, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  signalObject: {fileID: 2833409212259533844}
-  onMaterial: {fileID: 2100000, guid: 7ac30b3ea32b1fc46b56c834ef2cff10, type: 2}
-  offMaterial: {fileID: 2100000, guid: 7be193bfe2852b94ba8b07a2e2ec8cab, type: 2}
-  flashesPerSecond: 1.5
-  isBlinking: 0
+  blinkIntervalSeconds: 0.5
+  primaryOffMaterial: {fileID: 0}
+  primaryOnMaterial: {fileID: 0}
+  extraRoot: {fileID: 0}
+  extraOffMaterial: {fileID: 0}
+  extraOnMaterial: {fileID: 0}

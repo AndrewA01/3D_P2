@@ -23,7 +23,7 @@ public class DataRecorderV2 : MonoBehaviour
     [Tooltip("Play Mode save folder (relative to project root or absolute). Default: Assets/CSVCollection/NewPL")]
     [SerializeField] private string playModeSaveDirectory = "Assets/CSVCollection/NewPL";
 
-    [Tooltip("Build Mode save folder. Leave blank to use Application.persistentDataPath.")]
+    [Tooltip("Build Mode save folder (legacy). Ignored because builds write to: <BuildFolder>/<ProductName> Data/CSVData")]
     [SerializeField] private string buildModeSaveDirectory = "";
 
     [Header("Debug")]
@@ -507,9 +507,19 @@ public class DataRecorderV2 : MonoBehaviour
 #if UNITY_EDITOR
         fullFolderPath = ResolveEditorPath(playModeSaveDirectory);
 #else
-        fullFolderPath = string.IsNullOrWhiteSpace(buildModeSaveDirectory)
-            ? Application.persistentDataPath
-            : ResolveBuildPath(buildModeSaveDirectory);
+        // BUILDS ONLY:
+        // Create "<BuildFolder>/<ProductName> Data/CSVData"
+        // Application.dataPath -> "<BuildFolder>/<AppName>_Data" (Windows), so parent is the build folder.
+        string buildRoot = Directory.GetParent(Application.dataPath)?.FullName;
+        if (string.IsNullOrWhiteSpace(buildRoot))
+        {
+            // Fallback: persistentDataPath if something is very unusual about the platform
+            buildRoot = Application.persistentDataPath;
+        }
+
+        string dataFolderName = $"{Application.productName} Data"; // e.g., "3D_P2 Data"
+        string dataFolderPath = Path.Combine(buildRoot, dataFolderName);
+        fullFolderPath = Path.Combine(dataFolderPath, "CSVData");
 #endif
 
         try
@@ -541,6 +551,7 @@ public class DataRecorderV2 : MonoBehaviour
             : Path.Combine(projectRoot, pathFromInspector);
     }
 
+    // Kept for compatibility if you ever want to switch back to inspector-controlled build paths
     private static string ResolveBuildPath(string pathFromInspector)
     {
         return Path.IsPathRooted(pathFromInspector)

@@ -1,16 +1,3 @@
-// =======================
-// Practice_Warning.cs
-// Attach to: Practice_Warning (Canvas)
-// Assign in Inspector:
-//   - countdownText: your Instructions (TextMeshProUGUI) OR Text (TMP)
-//   - continueButton: your Continue button
-// Behavior:
-//   - ONLY runs when ExperimentController calls Show(...)
-//   - Freezes time, waits for Continue click
-//   - Then appends a 5s countdown to YOUR existing text
-//   - Unfreezes, hides itself, calls back to controller
-// =======================
-
 using System;
 using System.Collections;
 using TMPro;
@@ -19,16 +6,21 @@ using UnityEngine.UI;
 
 public class Practice_Warning : MonoBehaviour
 {
-    [Header("UI References (you assign these)")]
-    public TextMeshProUGUI countdownText;
+    [Header("UI References (assign these)")]
+    [Tooltip("The big instructions paragraph (optional; only used to cache/restore).")]
+    public TextMeshProUGUI instructionsText;
+
+    [Tooltip("The TMP that should display the countdown (THIS should be your 'New Text').")]
+    public TextMeshProUGUI countdownLabel;
+
     public Button continueButton;
 
     [Header("Countdown After Continue")]
     public int countdownSeconds = 5;
 
     private Action onFinished;
-    private Coroutine routine;
-    private string originalText;
+    private Coroutine countdownRoutine;
+    private string originalInstructions;
 
     private Canvas myCanvas;
 
@@ -37,14 +29,14 @@ public class Practice_Warning : MonoBehaviour
         myCanvas = GetComponent<Canvas>();
         if (myCanvas != null)
         {
-            // Ensure this overlay draws above other UI
             myCanvas.overrideSorting = true;
             myCanvas.sortingOrder = 100;
         }
 
-        // Must NOT show at scene start
+        // Don't show at scene start
         gameObject.SetActive(false);
 
+        // IMPORTANT: Don't nuke other listeners here; just add ours.
         if (continueButton != null)
             continueButton.onClick.AddListener(OnContinuePressed);
     }
@@ -53,45 +45,54 @@ public class Practice_Warning : MonoBehaviour
     {
         onFinished = onFinishedCallback;
 
-        // Freeze gameplay (UI still works)
         Time.timeScale = 0f;
 
-        // Cache whatever text YOU set in the Inspector
-        if (countdownText != null)
-            originalText = countdownText.text;
+        if (instructionsText != null)
+            originalInstructions = instructionsText.text;
 
-        // Ensure button is visible
+        // Ensure countdown text is blank until Continue is pressed
+        if (countdownLabel != null)
+            countdownLabel.text = "";
+
         if (continueButton != null)
+        {
             continueButton.gameObject.SetActive(true);
+            continueButton.interactable = true;
+        }
 
         gameObject.SetActive(true);
     }
 
     private void OnContinuePressed()
     {
+        // Prevent double-press
         if (continueButton != null)
+        {
+            continueButton.interactable = false;
             continueButton.gameObject.SetActive(false);
+        }
 
-        if (routine != null)
-            StopCoroutine(routine);
+        if (countdownRoutine != null)
+            StopCoroutine(countdownRoutine);
 
-        routine = StartCoroutine(CountdownRoutine());
+        countdownRoutine = StartCoroutine(CountdownRoutine());
     }
 
     private IEnumerator CountdownRoutine()
     {
         for (int t = countdownSeconds; t > 0; t--)
         {
-            if (countdownText != null)
-            {
-                countdownText.text = originalText + $"\n\nMain trials begin in {t}...";
-            }
+            if (countdownLabel != null)
+                countdownLabel.text = $"Main trials begin in {t}...";
+
             yield return new WaitForSecondsRealtime(1f);
         }
 
-        // Restore your original instructions text (keeps your UI clean)
-        if (countdownText != null)
-            countdownText.text = originalText;
+        if (countdownLabel != null)
+            countdownLabel.text = "";
+
+        if (instructionsText != null)
+            instructionsText.text = originalInstructions;
 
         Time.timeScale = 1f;
         gameObject.SetActive(false);
