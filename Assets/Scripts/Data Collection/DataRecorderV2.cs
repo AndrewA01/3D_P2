@@ -336,6 +336,26 @@ public class DataRecorderV2 : MonoBehaviour
             }
         }
 
+        // ===== Collision Avoidance / Decel logging from Car2 (MoveOnWaypoints exports) =====
+        string car2DecelStartAbs = "";
+        string car2CollisionAbs = "";
+        string collision01 = "";
+        string timeToCollision = "";
+
+        if (!isSubBlock && car2Mover != null)
+        {
+            if (car2Mover.DecelStartAbs > 0f) car2DecelStartAbs = F(car2Mover.DecelStartAbs);
+            if (car2Mover.CollisionAbs > 0f) car2CollisionAbs = F(car2Mover.CollisionAbs);
+
+            collision01 = car2Mover.HasCollided ? "1" : "0";
+
+            if (car2Mover.HasCollided && car2Mover.DecelStartAbs > 0f && car2Mover.CollisionAbs > 0f)
+            {
+                float ttc = car2Mover.CollisionAbs - car2Mover.DecelStartAbs;
+                timeToCollision = F(ttc);
+            }
+        }
+
         string row =
             Csv(participantID) + "," +
             Csv(blockLabel) + "," +
@@ -364,7 +384,11 @@ public class DataRecorderV2 : MonoBehaviour
             F(brakeInput) + "," +
             F(throttleInput) + "," +
             F(steeringInput) + "," +
-            car2Marge.ToString() +
+            car2Marge.ToString() + "," +
+            Csv(collision01) + "," +
+            Csv(car2DecelStartAbs) + "," +
+            Csv(car2CollisionAbs) + "," +
+            Csv(timeToCollision) +
             "\n";
 
         buffer.Append(row);
@@ -499,7 +523,8 @@ public class DataRecorderV2 : MonoBehaviour
             "X,Y,Z,LaneDeviation,SpeedMPH," +
             "TrialEnded,TrialEndReason,TrialEndAbs,TrialEndRel," +
             "SurveyResponse,SurveyResponseCorrect,SurveyRT," +
-            "BrakeInput,ThrottleInput,SteeringInput,Car2Marge\n";
+            "BrakeInput,ThrottleInput,SteeringInput,Car2Marge," +
+            "Collision,Car2DecelStartAbs,Car2CollisionAbs,TimeToCollision\n";
     }
 
     private void ResolveFolderPathOnly()

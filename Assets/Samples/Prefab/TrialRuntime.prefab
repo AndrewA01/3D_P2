@@ -648,7 +648,7 @@ MonoBehaviour:
   - {fileID: 3278299513166458103}
   countdownText: {fileID: 3316732377624405846}
   allowPKey: 1
-  trialDurationSeconds: 0
+  trialDurationSeconds: 65
   countdownSecondsAfterChoice: 5
 --- !u!1 &3278299514231335168
 GameObject:
