@@ -18,6 +18,10 @@ public class Practice_Warning : MonoBehaviour
     [Header("Countdown After Continue")]
     public int countdownSeconds = 5;
 
+    [Header("Countdown Text")]
+    [Tooltip("Use {0} for the seconds. Example: 'Practice trials begin in {0}...'")]
+    public string countdownFormat = "Main trials begin in {0}...";
+
     private Action onFinished;
     private Coroutine countdownRoutine;
     private string originalInstructions;
@@ -83,7 +87,7 @@ public class Practice_Warning : MonoBehaviour
         for (int t = countdownSeconds; t > 0; t--)
         {
             if (countdownLabel != null)
-                countdownLabel.text = $"Main trials begin in {t}...";
+                countdownLabel.text = string.Format(countdownFormat, t);
 
             yield return new WaitForSecondsRealtime(1f);
         }

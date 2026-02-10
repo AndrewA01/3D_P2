@@ -160,7 +160,28 @@ public class ExperimentController : MonoBehaviour
         waitingForMainStart = false;
         currentTrialIndex = -1;
 
-        LoadNextTrial();
+        // NEW: show warning immediately after Start on SubBlock before first practice trial loads
+        Practice_Warning warning = FindObjectOfType<Practice_Warning>(true);
+        if (warning == null)
+        {
+            // If not found, just proceed
+            LoadNextTrial();
+            return;
+        }
+
+        // Make sure only the warning UI is interactable while it's up
+        DisableAllUISelectablesExcept(warning.transform);
+
+        warning.countdownFormat = "Practice trials begin in {0}...";
+        warning.Show(() =>
+        {
+            RestoreDisabledUISelectables();
+
+            Time.timeScale = 1f;
+            Input.ResetInputAxes();
+
+            LoadNextTrial(); // starts practice trial 1
+        });
     }
 
     // ================= TRIAL FLOW =================
@@ -244,6 +265,7 @@ public class ExperimentController : MonoBehaviour
 
         DisableAllUISelectablesExcept(warning.transform);
 
+        warning.countdownFormat = "Main trials begin in {0}...";
         warning.Show(() =>
         {
             waitingForMainStart = false;
