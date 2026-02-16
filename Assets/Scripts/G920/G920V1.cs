@@ -28,7 +28,7 @@ public class G920V1 : MonoBehaviour
     [Header("Sensitivity")]
     [Range(0.1f, 3f)] public float steeringSensitivity = 0.5f;
     [Range(0.1f, 3f)] public float throttleSensitivity = 1.0f;
-    [Range(0.1f, 3f)] public float brakeSensitivity = 1.25f;
+    [Range(0.1f, 10f)] public float brakeSensitivity = 6f;
 
     [Header("Coast Friction / Rolling Resistance")]
     public bool enableCoastFriction = true;

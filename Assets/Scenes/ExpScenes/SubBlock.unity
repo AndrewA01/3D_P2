@@ -1081,6 +1081,7 @@ MonoBehaviour:
   countdownLabel: {fileID: 1512777425}
   continueButton: {fileID: 1630887799}
   countdownSeconds: 5
+  countdownFormat: Main trials begin in {0}...
 --- !u!114 &804632235
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1732,11 +1733,7 @@ MonoBehaviour:
   practiceScenes:
   - sceneName: E_Amb_L
     sceneAsset: {fileID: 0}
-  - sceneName: E_Red_R
-    sceneAsset: {fileID: 0}
-  - sceneName: U_Amb_R
-    sceneAsset: {fileID: 0}
-  - sceneName: U_Red_L
+  - sceneName: U_Red_R
     sceneAsset: {fileID: 0}
   mainScenes:
   - sceneName: E_Amb_L
@@ -1771,7 +1768,7 @@ MonoBehaviour:
     sceneAsset: {fileID: 0}
   - sceneName: U_Red_R
     sceneAsset: {fileID: 0}
-  practiceTrialCount: 4
+  practiceTrialCount: 2
   mainTrialCount: 16
   shufflePracticeOrder: 1
   shuffleMainOrder: 1

@@ -40,16 +40,10 @@ public class MoveOnWaypoints : MonoBehaviour
     [Tooltip("If true, wheel colliders will be disabled while hidden + during the brief hold to prevent suspension jitter, then re-enabled.")]
     public bool disableWheelCollidersUntilHoldEnds = true;
 
-    // =========================
-    // NEW: Signal lead time (ONE NEW INSPECTOR SETTING)
-    // =========================
     [Header("Turn Signal Lead Time (NEW)")]
     [Tooltip("Seconds to keep the turn signal visible BEFORE Car 2 starts accelerating / begins the merge sequence.")]
-    [SerializeField] private float signalLeadTimeSeconds = 0.5f; // set your preferred default here
+    [SerializeField] private float signalLeadTimeSeconds = 0.5f;
 
-    // =========================
-    // Collision Avoidance / Deceleration (Inspector-tunable)
-    // =========================
     [Header("Collision Avoidance / Deceleration")]
     [Tooltip("If enabled, Car 2 will decelerate in a controlled way to support collision avoidance measures.")]
     [SerializeField] private bool enableControlledDecel = true;
@@ -79,6 +73,7 @@ public class MoveOnWaypoints : MonoBehaviour
 
     // =========================
     // Merge Trigger Export (for DataRecorder)
+    // NOTE: Now means *LATERAL MERGE START* (Phase.MergeLateral entry)
     // =========================
     [Header("Merge Trigger Export (for DataRecorder)")]
     [SerializeField] private bool hasMergeStarted = false;
@@ -120,11 +115,9 @@ public class MoveOnWaypoints : MonoBehaviour
     private Vector3 lastPlayerPos;
     private bool hasLastPlayerPos;
 
-    // Decel scheduling/state
     private bool decelScheduled = false;
     private float decelScheduledAbs = -1f;
 
-    // NEW: signal lead time state (absolute time)
     private float signalLeadStartAbs = -1f;
 
     private enum Phase
@@ -132,10 +125,7 @@ public class MoveOnWaypoints : MonoBehaviour
         HiddenFollow,
         HoldAtSpawn,
         FollowAdjacentBehind,
-
-        // NEW INTERNAL PHASE (no new script)
         SignalLeadHold,
-
         PreMergeGetLead,
         MergeLateral,
         PostMerge
@@ -173,6 +163,30 @@ public class MoveOnWaypoints : MonoBehaviour
                       ?? GetComponentInChildren<TurnSignalBlinkerSimpleV2>(true)
                       ?? GetComponentInParent<TurnSignalBlinkerSimpleV2>(true);
         }
+
+        // IMPORTANT: hard reset exported fields in case prefab was saved dirty
+        ResetExports();
+    }
+
+    void OnEnable()
+    {
+        // Also reset on enable (extra safety)
+        ResetExports();
+    }
+
+    private void ResetExports()
+    {
+        hasMergeStarted = false;
+        mergeStartAbs = -1f;
+
+        hasDecelStarted = false;
+        decelStartAbs = -1f;
+
+        hasCollided = false;
+        collisionAbs = -1f;
+
+        decelScheduled = false;
+        decelScheduledAbs = -1f;
     }
 
     void FixedUpdate()
@@ -220,7 +234,6 @@ public class MoveOnWaypoints : MonoBehaviour
                 {
                     if (!player) break;
 
-                    // Normal adjacent follow
                     pos.x = Mathf.MoveTowards(pos.x, adjacentLaneX, lateralSpeed * dt);
 
                     float gap = player.position.z - pos.z;
@@ -245,22 +258,13 @@ public class MoveOnWaypoints : MonoBehaviour
 
                     if (!mergeTriggered && Time.time >= mergeTriggerTime)
                     {
-                        // === MERGE TRIGGER MOMENT (exported) ===
+                        // Merge trigger moment (signal becomes visible)
                         mergeTriggered = true;
 
-                        if (!hasMergeStarted)
-                        {
-                            hasMergeStarted = true;
-                            mergeStartAbs = Time.realtimeSinceStartup;
-                        }
-
-                        // Turn signal starts now (participant sees it)
                         if (turnSignal != null) turnSignal.OnMergeStarted();
 
-                        // Schedule/activate decel depending on mode (still referenced to merge trigger)
                         SetupDecelSchedulingOnMergeTrigger();
 
-                        // NEW: hold phase so signal is visible for X seconds before accelerating/merging
                         signalLeadStartAbs = Time.realtimeSinceStartup;
                         phase = Phase.SignalLeadHold;
                     }
@@ -271,8 +275,6 @@ public class MoveOnWaypoints : MonoBehaviour
                 {
                     if (!player) break;
 
-                    // During signal lead time we KEEP GAP (same control law as Phase 2),
-                    // but we do NOT start the pre-merge lead acceleration yet.
                     pos.x = Mathf.MoveTowards(pos.x, adjacentLaneX, lateralSpeed * dt);
 
                     float gap = player.position.z - pos.z;
@@ -290,8 +292,6 @@ public class MoveOnWaypoints : MonoBehaviour
 
                     currentSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, accel * dt);
 
-                    // Decel system can still run if it becomes active (based on realtime scheduling),
-                    // but by default you've restricted decel to Merge+Post, so it won't affect this phase.
                     ApplyControlledDecelIfActive(dt);
 
                     pos.z += currentSpeed * dt;
@@ -317,7 +317,14 @@ public class MoveOnWaypoints : MonoBehaviour
 
                     if (lead >= mergeStartLeadMeters)
                     {
+                        // IMPORTANT: lateral merge starts NOW
                         phase = Phase.MergeLateral;
+
+                        if (!hasMergeStarted)
+                        {
+                            hasMergeStarted = true;
+                            mergeStartAbs = Time.realtimeSinceStartup;
+                        }
 
                         if (enableControlledDecel && decelStartMode == DecelStartMode.OnMergeLateralStart)
                             StartDecelNowIfNotStarted();
@@ -383,18 +390,7 @@ public class MoveOnWaypoints : MonoBehaviour
     {
         spawned = true;
 
-        // Reset merge export each spawn/run
-        hasMergeStarted = false;
-        mergeStartAbs = -1f;
-
-        // Reset decel/collision export each spawn/run
-        hasDecelStarted = false;
-        decelStartAbs = -1f;
-        hasCollided = false;
-        collisionAbs = -1f;
-
-        decelScheduled = false;
-        decelScheduledAbs = -1f;
+        ResetExports();
 
         // Reset signal lead timing
         signalLeadStartAbs = -1f;
@@ -491,7 +487,6 @@ public class MoveOnWaypoints : MonoBehaviour
             decelScheduled = true;
             decelScheduledAbs = Time.realtimeSinceStartup + Mathf.Max(0f, decelDelayAfterMergeTriggerSeconds);
         }
-        // Other modes start when entering phases.
     }
 
     private void StartDecelNowIfNotStarted()
@@ -529,14 +524,39 @@ public class MoveOnWaypoints : MonoBehaviour
     }
 
     // =========================
-    // Collision detection (first impact only)
+    // Collision detection: ONLY player-car collision, first impact only
     // =========================
     private void OnCollisionEnter(Collision collision)
     {
         if (hasCollided) return;
         if (!spawned) return;
 
+        if (!IsPlayerCollision(collision)) return;
+
         hasCollided = true;
         collisionAbs = Time.realtimeSinceStartup;
+    }
+
+    private bool IsPlayerCollision(Collision collision)
+    {
+        if (collision == null) return false;
+
+        // Prefer explicit player reference
+        if (player != null)
+        {
+            Transform otherRoot = collision.transform != null ? collision.transform.root : null;
+            Transform playerRoot = player.root;
+
+            if (otherRoot == playerRoot) return true;
+        }
+
+        // Fallback: tag check
+        if (!string.IsNullOrWhiteSpace(playerTag))
+        {
+            if (collision.collider != null && collision.collider.CompareTag(playerTag)) return true;
+            if (collision.gameObject != null && collision.gameObject.CompareTag(playerTag)) return true;
+        }
+
+        return false;
     }
 }
