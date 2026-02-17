@@ -2952,21 +2952,13 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Please accelerate and maintain a speed of 65 MPH, unless traffic conditions
-    require you otherwise.
-
-
-    Remain in the center lane and try to keep your vehicle
-    centered within the lane at all times.
-
-
-    Other vehicles may merge into your
+  m_text: "Please accelerate and maintain a speed of 65 MPH, unless traffic conditions
+    require you otherwise.\n\nRemain in the center lane and try to keep your vehicle
+    centered within the lane at all times.\n\nOther vehicles may merge into your
     lane during the drive. If this occurs, respond naturally by steering and/or braking
-    as you would in real driving to avoid any collisions.
-
-
-    If you have no questions,
-    please press Continue to begin.'
+    as you would in real driving to avoid any collisions.\n\nContinue driving until
+    the trial ends, then answer the on-screen question to the best of your ability,
+    by using the mouse. \n\nIf you have no questions, please press Continue to begin."
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -2993,8 +2985,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 23
-  m_fontSizeBase: 23
+  m_fontSize: 22
+  m_fontSizeBase: 22
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -3029,7 +3021,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: -235.25458, y: 0, z: -263.23834, w: 0}
+  m_margin: {x: -348.7167, y: 0, z: -347.9353, w: 0}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -3462,8 +3454,6 @@ MonoBehaviour:
   playerObjectName: Car 1
   sampleIntervalSeconds: 0.1
   playModeSaveDirectory: Assets/CSVCollection/NewPL
-  buildModeSaveDirectory: 
-  verboseLogs: 1
 --- !u!4 &2078838238
 Transform:
   m_ObjectHideFlags: 0
