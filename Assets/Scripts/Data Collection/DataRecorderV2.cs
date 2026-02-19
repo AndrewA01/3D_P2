@@ -29,6 +29,11 @@ public class DataRecorderV2 : MonoBehaviour
     private const float BRAKE_RT_THRESHOLD = 2f;     // on 0..100 scale
     private const float THROTTLE_RT_THRESHOLD = 2f;  // on 0..100 scale
 
+    // ---- Lane bounds (world X centerline = 0, markers at +-1.5) ----
+    private const float LANE_BOUND_X = 1.5f;
+    private bool wasOutOfLane = false;
+    private int laneDeviationCount = 0;
+
     private StringBuilder buffer;
     private bool hasFlushed = false;
 
@@ -37,6 +42,13 @@ public class DataRecorderV2 : MonoBehaviour
     private Vector3 lastPos;
     private float lastPosTime;
     private float speedMph;
+
+    // ---- Deceleration (m/s^2) state ----
+    // Deceleration is stored as positive magnitude when slowing: decel = max(0, -accel)
+    private bool hasPrevSpeedSample = false;
+    private float prevSpeedMph = 0f;
+    private float prevSpeedTimeAbs = 0f;
+    private float decelerationMs2 = float.NaN;
 
     private float nextSampleTime;
 
@@ -57,6 +69,7 @@ public class DataRecorderV2 : MonoBehaviour
     private string surveyResponse = "";
     private float surveyRT = -1f;
 
+    // NOTE: This now stores ABSOLUTE deviation (always positive)
     private float laneDeviation = float.NaN;
 
     private bool surveyButtonsHooked = false;
@@ -155,7 +168,11 @@ public class DataRecorderV2 : MonoBehaviour
             speedMph = 0f;
         }
 
+        // reset per-scene hook flags
         surveyButtonsHooked = false;
+
+        // reset decel state for clean first sample
+        ResetDecelState();
     }
 
     private void RefreshFromExperimentController()
@@ -186,7 +203,14 @@ public class DataRecorderV2 : MonoBehaviour
                 surveyResponse = "";
                 surveyRT = -1f;
 
+                // ---- reset lane deviation counting per trial ----
+                wasOutOfLane = false;
+                laneDeviationCount = 0;
+
                 ResetMergeRTState();
+
+                // ---- reset decel state per trial ----
+                ResetDecelState();
             }
         }
 
@@ -250,7 +274,27 @@ public class DataRecorderV2 : MonoBehaviour
         {
             Vector3 p = car.transform.position;
             x = p.x; y = p.y; z = p.z;
+
+            // ---- lane deviation ABS (world X centerline = 0) + count out-of-bounds entries ----
+            laneDeviation = Mathf.Abs(x);              // always positive
+            bool outNow = laneDeviation > LANE_BOUND_X;
+
+            // count only when transitioning from in-bounds -> out-of-bounds
+            if (!wasOutOfLane && outNow)
+                laneDeviationCount++;
+
+            wasOutOfLane = outNow;
+
             UpdateSpeedMph(p);
+
+            // ---- compute deceleration (m/s^2) from SpeedMPH over TimeAbs ----
+            UpdateDecelerationMs2(timeAbs);
+        }
+        else
+        {
+            laneDeviation = float.NaN;
+            decelerationMs2 = float.NaN;
+            hasPrevSpeedSample = false;
         }
 
         string sceneName = SceneManager.GetActiveScene().name ?? "";
@@ -274,8 +318,8 @@ public class DataRecorderV2 : MonoBehaviour
         float brakeInput = GetBrakeScaled0To100();
         float throttleInput = GetThrottleScaled0To100();
 
-        // ===== Car2 Logic (Option B) + DecelStartRel =====
-        int car2Merge = 0;
+        // ===== Car2 Logic + Merge Time as timestamp (ABS) =====
+        string car2MergeTimeAbsStr = "";
         int collision01 = 0;
 
         string car2DecelStartRel = "";
@@ -292,7 +336,9 @@ public class DataRecorderV2 : MonoBehaviour
             if (car2Mover.CollisionAbs > 0f) collisionAbs = car2Mover.CollisionAbs;
             if (car2Mover.DecelStartAbs > 0f) decelStartAbs = car2Mover.DecelStartAbs;
 
-            if (mergeStartAbs > 0f && timeAbs >= mergeStartAbs) car2Merge = 1;
+            // Car2MergeTime = mergeStartAbs (absolute timestamp), like Car2CollisionAbs
+            if (mergeStartAbs > 0f) car2MergeTimeAbsStr = F(mergeStartAbs);
+
             if (collisionAbs > 0f && timeAbs >= collisionAbs) collision01 = 1;
 
             if (collisionAbs > 0f) car2CollisionAbs = F(collisionAbs);
@@ -349,7 +395,9 @@ public class DataRecorderV2 : MonoBehaviour
             F(y) + "," +
             F(z) + "," +
             F(laneDeviation) + "," +
+            laneDeviationCount + "," +
             F(speedMph) + "," +
+            F(decelerationMs2) + "," +
             // removed: TrialEnded, TrialEndReason, TrialEndAbs
             F(trialEndRel) + "," +
             Csv(surveyResponse) + "," +
@@ -358,7 +406,7 @@ public class DataRecorderV2 : MonoBehaviour
             F(brakeInput) + "," +
             F(throttleInput) + "," +
             F(steeringInput) + "," +
-            car2Merge + "," +
+            Csv(car2MergeTimeAbsStr) + "," +   // <-- Car2MergeTime (ABS timestamp)
             mergeRTSteerStr + "," +
             mergeRTBrakeStr + "," +
             mergeRTThrottleStr + "," +
@@ -369,6 +417,48 @@ public class DataRecorderV2 : MonoBehaviour
             "\n";
 
         buffer.Append(row);
+    }
+
+    private void UpdateDecelerationMs2(float timeAbs)
+    {
+        // Need two samples to compute delta
+        if (!hasPrevSpeedSample)
+        {
+            hasPrevSpeedSample = true;
+            prevSpeedMph = speedMph;
+            prevSpeedTimeAbs = timeAbs;
+            decelerationMs2 = float.NaN; // first row has no decel
+            return;
+        }
+
+        float dt = timeAbs - prevSpeedTimeAbs;
+        if (dt <= 0.00001f)
+        {
+            decelerationMs2 = float.NaN;
+            return;
+        }
+
+        // Convert mph -> m/s
+        float vNow = speedMph * 0.44704f;
+        float vPrev = prevSpeedMph * 0.44704f;
+
+        // acceleration (m/s^2)
+        float accel = (vNow - vPrev) / dt;
+
+        // deceleration as positive magnitude when slowing down
+        decelerationMs2 = Mathf.Max(0f, -accel);
+
+        // update previous
+        prevSpeedMph = speedMph;
+        prevSpeedTimeAbs = timeAbs;
+    }
+
+    private void ResetDecelState()
+    {
+        hasPrevSpeedSample = false;
+        prevSpeedMph = 0f;
+        prevSpeedTimeAbs = 0f;
+        decelerationMs2 = float.NaN;
     }
 
     private float GetTrialTimeRel()
@@ -422,11 +512,11 @@ public class DataRecorderV2 : MonoBehaviour
         return
             "ParticipantID,Block,TrialIndex,Scene,Event," +
             "TimeAbs,TrialTimeRel," +
-            "X,Y,Z,LaneDeviation,SpeedMPH," +
+            "X,Y,Z,LaneDeviationAbs,LaneDeviationCount,SpeedMPH,Deceleration," +
             // removed: TrialEnded,TrialEndReason,TrialEndAbs
             "TrialEndRel," +
             "SurveyResponse,SurveyResponseCorrect,SurveyRT," +
-            "BrakeInput,ThrottleInput,SteeringInput,Car2Merge," +
+            "BrakeInput,ThrottleInput,SteeringInput,Car2MergeTime," + // <-- renamed
             "MergeRTSteer,MergeRTBrake,MergeRTThrottle," +
             "Collision,Car2DecelStartRel,Car2CollisionAbs,TimeToCollision\n";
     }
