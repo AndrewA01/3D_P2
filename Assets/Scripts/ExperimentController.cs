@@ -1,7 +1,7 @@
 ﻿// =======================
 // ExperimentController.cs
-// SAFE version for wheel input + scene transitions
-// Fixes stuck throttle by resetting input + timescale before loads
+// - Reuses last ParticipantID if input is blank (no UI changes)
+// - Keeps practice labeling correct (index-based)
 // =======================
 
 using System;
@@ -62,7 +62,7 @@ public class ExperimentController : MonoBehaviour
     public List<SceneRef> mainScenes = new();
 
     [Header("Trial Counts")]
-    public int practiceTrialCount = 4;
+    public int practiceTrialCount = 2;
     public int mainTrialCount = 16;
 
     [Header("Shuffle")]
@@ -72,12 +72,13 @@ public class ExperimentController : MonoBehaviour
     [Header("Scene Names")]
     public string subBlockSceneName = "SubBlock";
 
-    // ===== Runtime =====
     [Header("Runtime (read-only)")]
     public string participantID;
     public BlockType currentBlock;
     public int currentTrialIndex = -1;
     public bool experimentRunning = false;
+
+    private const string PREF_LAST_PID = "HF_LastParticipantID";
 
     private readonly List<string> trialSceneOrder = new();
     private readonly List<TrialCondition> trialConditions = new();
@@ -101,8 +102,6 @@ public class ExperimentController : MonoBehaviour
             };
         }
     }
-
-    // ================= LIFECYCLE =================
 
     private void Awake()
     {
@@ -137,39 +136,47 @@ public class ExperimentController : MonoBehaviour
     }
 #endif
 
-    // ================= SUBBLOCK START =================
-
     public void OnStartButtonPressed()
     {
-        // DEFENSIVE: always resume time + clear inputs
         Time.timeScale = 1f;
         Input.ResetInputAxes();
 
-        participantID = string.IsNullOrWhiteSpace(participantIdInput?.text)
-            ? "P000"
-            : participantIdInput.text;
+        string typed = participantIdInput != null ? (participantIdInput.text ?? "").Trim() : "";
 
+        // If user left it blank, reuse last saved ID. If none, fall back to P000.
+        if (string.IsNullOrWhiteSpace(typed))
+        {
+            typed = PlayerPrefs.GetString(PREF_LAST_PID, "P000").Trim();
+            if (string.IsNullOrWhiteSpace(typed)) typed = "P000";
+        }
+        else
+        {
+            // Save the typed ID as the default for next time
+            PlayerPrefs.SetString(PREF_LAST_PID, typed);
+            PlayerPrefs.Save();
+        }
+
+        participantID = typed;
+
+        // dropdown: 0->Day, 1->Night
         currentBlock = (blockDropdown != null && blockDropdown.value == 1)
             ? BlockType.Night
             : BlockType.Day;
 
         BuildTrialSceneOrder();
-        BuildTrialConditionSchedule();
+        BuildTrialConditionScheduleFromSceneOrder();
 
         experimentRunning = true;
         waitingForMainStart = false;
         currentTrialIndex = -1;
 
-        // NEW: show warning immediately after Start on SubBlock before first practice trial loads
         Practice_Warning warning = FindObjectOfType<Practice_Warning>(true);
         if (warning == null)
         {
-            // If not found, just proceed
             LoadNextTrial();
             return;
         }
 
-        // Make sure only the warning UI is interactable while it's up
         DisableAllUISelectablesExcept(warning.transform);
 
         warning.countdownFormat = "Practice trials begin in {0}...";
@@ -180,11 +187,9 @@ public class ExperimentController : MonoBehaviour
             Time.timeScale = 1f;
             Input.ResetInputAxes();
 
-            LoadNextTrial(); // starts practice trial 1
+            LoadNextTrial();
         });
     }
-
-    // ================= TRIAL FLOW =================
 
     public void OnTrialFinished()
     {
@@ -195,7 +200,6 @@ public class ExperimentController : MonoBehaviour
     {
         currentTrialIndex++;
 
-        // EXPERIMENT FINISHED
         if (currentTrialIndex >= trialSceneOrder.Count)
         {
             Debug.Log($"[ExperimentController] Finished experiment for {participantID} ({currentBlock}).");
@@ -211,7 +215,6 @@ public class ExperimentController : MonoBehaviour
             return;
         }
 
-        // PRACTICE → MAIN GATE
         if (currentTrialIndex == practiceTrialCount)
         {
             waitingForMainStart = true;
@@ -233,13 +236,10 @@ public class ExperimentController : MonoBehaviour
         LoadSceneSafe(trialSceneOrder[currentTrialIndex]);
     }
 
-    // ================= SCENE LOAD SAFETY =================
-
     private void LoadSceneSafe(string sceneName)
     {
         Debug.Log($"[ExperimentController] Loading trial {currentTrialIndex}: {sceneName}");
 
-        // CRITICAL FIX
         Time.timeScale = 1f;
         Input.ResetInputAxes();
 
@@ -279,8 +279,6 @@ public class ExperimentController : MonoBehaviour
         });
     }
 
-    // ================= UI HELPERS =================
-
     private void DisableAllUISelectablesExcept(Transform keepEnabledRoot)
     {
         disabledSelectables.Clear();
@@ -308,8 +306,6 @@ public class ExperimentController : MonoBehaviour
 
         disabledSelectables.Clear();
     }
-
-    // ================= TRIAL ORDER =================
 
     private void BuildTrialSceneOrder()
     {
@@ -339,43 +335,57 @@ public class ExperimentController : MonoBehaviour
         }
     }
 
-    // ================= CONDITIONS =================
-
-    private void BuildTrialConditionSchedule()
+    private void BuildTrialConditionScheduleFromSceneOrder()
     {
         trialConditions.Clear();
 
-        var combos = new List<(Expectancy, SignalColor)>
+        for (int i = 0; i < trialSceneOrder.Count; i++)
         {
-            (Expectancy.Expected, SignalColor.Red),
-            (Expectancy.Expected, SignalColor.Amber),
-            (Expectancy.Unexpected, SignalColor.Red),
-            (Expectancy.Unexpected, SignalColor.Amber)
-        };
+            string scene = trialSceneOrder[i] ?? "";
 
-        foreach (var c in combos)
-        {
-            trialConditions.Add(new TrialCondition
+            TrialCondition tc = new TrialCondition
             {
-                isPractice = true,
-                expectancy = c.Item1,
-                signalColor = c.Item2,
-                mergeSide = UnityEngine.Random.value < 0.5f ? MergeSide.Left : MergeSide.Right
-            });
-        }
+                isPractice = (i < practiceTrialCount),
+                expectancy = ParseExpectancy(scene),
+                signalColor = ParseSignalColor(scene),
+                mergeSide = ParseMergeSide(scene)
+            };
 
-        foreach (var c in combos)
-        {
-            for (int i = 0; i < 4; i++)
-            {
-                trialConditions.Add(new TrialCondition
-                {
-                    isPractice = false,
-                    expectancy = c.Item1,
-                    signalColor = c.Item2,
-                    mergeSide = (i < 2) ? MergeSide.Left : MergeSide.Right
-                });
-            }
+            trialConditions.Add(tc);
         }
+    }
+
+    private static Expectancy ParseExpectancy(string sceneName)
+    {
+        if (string.IsNullOrEmpty(sceneName)) return Expectancy.Expected;
+
+        if (sceneName.IndexOf("U_", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            sceneName.StartsWith("U", StringComparison.OrdinalIgnoreCase) ||
+            sceneName.IndexOf("Unexpected", StringComparison.OrdinalIgnoreCase) >= 0)
+            return Expectancy.Unexpected;
+
+        return Expectancy.Expected;
+    }
+
+    private static SignalColor ParseSignalColor(string sceneName)
+    {
+        if (string.IsNullOrEmpty(sceneName)) return SignalColor.Red;
+
+        if (sceneName.IndexOf("Amb", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            sceneName.IndexOf("Amber", StringComparison.OrdinalIgnoreCase) >= 0)
+            return SignalColor.Amber;
+
+        return SignalColor.Red;
+    }
+
+    private static MergeSide ParseMergeSide(string sceneName)
+    {
+        if (string.IsNullOrEmpty(sceneName)) return MergeSide.Left;
+
+        if (sceneName.IndexOf("_R", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            sceneName.IndexOf("Right", StringComparison.OrdinalIgnoreCase) >= 0)
+            return MergeSide.Right;
+
+        return MergeSide.Left;
     }
 }

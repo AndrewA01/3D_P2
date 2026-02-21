@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Globalization;
 using System.Text;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -24,18 +25,24 @@ public class DataRecorderV2 : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool verboseLogs = false;
 
-    // ---- Merge RT thresholds (tune if needed) ----
-    private const float STEER_RT_THRESHOLD = 2f;     // on -100..100 scale
-    private const float BRAKE_RT_THRESHOLD = 2f;     // on 0..100 scale
-    private const float THROTTLE_RT_THRESHOLD = 2f;  // on 0..100 scale
+    private const float STEER_RT_THRESHOLD = 2f;
+    private const float BRAKE_RT_THRESHOLD = 2f;
+    private const float THROTTLE_RT_THRESHOLD = 2f;
 
-    // ---- Lane bounds (world X centerline = 0, markers at +-1.5) ----
     private const float LANE_BOUND_X = 1.5f;
     private bool wasOutOfLane = false;
     private int laneDeviationCount = 0;
 
     private StringBuilder buffer;
-    private bool hasFlushed = false;
+
+    private string participantID = "UNKNOWN";
+    private string blockLabel = "UNKNOWN";
+    private bool blockHasData = false;
+
+    private readonly HashSet<string> flushedBlockKeys = new HashSet<string>();
+    private string activeBlockKey = "";
+
+    private bool pendingEndOfBlockFlush = false;
 
     private GameObject car;
     private Rigidbody carRb;
@@ -43,8 +50,6 @@ public class DataRecorderV2 : MonoBehaviour
     private float lastPosTime;
     private float speedMph;
 
-    // ---- Deceleration (m/s^2) state ----
-    // Deceleration is stored as positive magnitude when slowing: decel = max(0, -accel)
     private bool hasPrevSpeedSample = false;
     private float prevSpeedMph = 0f;
     private float prevSpeedTimeAbs = 0f;
@@ -52,24 +57,18 @@ public class DataRecorderV2 : MonoBehaviour
 
     private float nextSampleTime;
 
-    private string participantID = "UNKNOWN";
-    private string blockLabel = "UNKNOWN";
-
     private int currentTrialIndex = -1;
     private float trialStartAbs = -1f;
 
     private string trialType = "";
 
     private bool trialEnded = false;
-    private string trialEndReason = "";
-    private float trialEndAbs = -1f;
     private float trialEndRel = -1f;
 
     private float surveyStartAbs = -1f;
     private string surveyResponse = "";
     private float surveyRT = -1f;
 
-    // NOTE: This now stores ABSOLUTE deviation (always positive)
     private float laneDeviation = float.NaN;
 
     private bool surveyButtonsHooked = false;
@@ -77,7 +76,6 @@ public class DataRecorderV2 : MonoBehaviour
 
     private MoveOnWaypoints car2Mover;
 
-    // ---- Merge RT state per trial ----
     private bool mergeRTInitialized = false;
     private float mergeStartAbsCached = -1f;
 
@@ -127,6 +125,7 @@ public class DataRecorderV2 : MonoBehaviour
         RefreshFromExperimentController();
         TryHookSurveyButtons();
         DetectTrialEndTransition();
+        AutoFlushWhenBlockEnds();
 
         if (Time.unscaledTime >= nextSampleTime)
         {
@@ -139,7 +138,7 @@ public class DataRecorderV2 : MonoBehaviour
 
     private void OnApplicationQuit()
     {
-        FlushToDiskAtEnd();
+        FlushCurrentBlockNow();
     }
 
     private void OnDisable()
@@ -147,7 +146,7 @@ public class DataRecorderV2 : MonoBehaviour
 #if UNITY_EDITOR
         if (!Application.isPlaying) return;
 #endif
-        FlushToDiskAtEnd();
+        FlushCurrentBlockNow();
     }
 
     private void OnDestroy()
@@ -168,10 +167,7 @@ public class DataRecorderV2 : MonoBehaviour
             speedMph = 0f;
         }
 
-        // reset per-scene hook flags
         surveyButtonsHooked = false;
-
-        // reset decel state for clean first sample
         ResetDecelState();
     }
 
@@ -183,7 +179,14 @@ public class DataRecorderV2 : MonoBehaviour
         if (!string.IsNullOrWhiteSpace(ExperimentController.Instance.participantID))
             participantID = ExperimentController.Instance.participantID.Trim();
 
-        blockLabel = ExperimentController.Instance.currentBlock.ToString();
+        blockLabel = NormalizeBlockLabel(ExperimentController.Instance.currentBlock.ToString());
+
+        if (!string.IsNullOrWhiteSpace(participantID) && (blockLabel == "Day" || blockLabel == "Night"))
+        {
+            string key = participantID + "|" + blockLabel;
+            if (string.IsNullOrEmpty(activeBlockKey))
+                activeBlockKey = key;
+        }
 
         int idx = ExperimentController.Instance.currentTrialIndex;
         if (idx != currentTrialIndex)
@@ -195,21 +198,16 @@ public class DataRecorderV2 : MonoBehaviour
                 trialStartAbs = Time.realtimeSinceStartup;
 
                 trialEnded = false;
-                trialEndReason = "";
-                trialEndAbs = -1f;
                 trialEndRel = -1f;
 
                 surveyStartAbs = -1f;
                 surveyResponse = "";
                 surveyRT = -1f;
 
-                // ---- reset lane deviation counting per trial ----
                 wasOutOfLane = false;
                 laneDeviationCount = 0;
 
                 ResetMergeRTState();
-
-                // ---- reset decel state per trial ----
                 ResetDecelState();
             }
         }
@@ -218,14 +216,95 @@ public class DataRecorderV2 : MonoBehaviour
         trialType = cond.isPractice ? "Practice" : "Main";
     }
 
+    private void AutoFlushWhenBlockEnds()
+    {
+        var ctrl = ExperimentController.Instance;
+        if (ctrl == null) return;
+
+        int totalTrials = Mathf.Max(0, ctrl.practiceTrialCount + ctrl.mainTrialCount);
+        if (totalTrials <= 0) return;
+
+        int lastIndex = totalTrials - 1; // for you: 17
+
+        if (ctrl.experimentRunning && ctrl.currentTrialIndex >= lastIndex)
+            pendingEndOfBlockFlush = true;
+
+        if (pendingEndOfBlockFlush && (!ctrl.experimentRunning || ctrl.currentTrialIndex < 0))
+        {
+            FlushCurrentBlockNow();
+            pendingEndOfBlockFlush = false;
+            activeBlockKey = ""; // prepare for next block
+        }
+    }
+
+    public void FlushCurrentBlockNow()
+    {
+        participantID = (participantID ?? "").Trim();
+        blockLabel = NormalizeBlockLabel(blockLabel);
+
+        if (string.IsNullOrWhiteSpace(participantID)) return;
+        if (participantID.Equals("UNKNOWN", StringComparison.OrdinalIgnoreCase)) return;
+        if (blockLabel != "Day" && blockLabel != "Night") return;
+
+        string key = participantID + "|" + blockLabel;
+        if (flushedBlockKeys.Contains(key)) return;
+
+        if (!blockHasData || buffer == null || buffer.Length == 0) return;
+
+        // EXACT filename format you requested:
+        // ParticipantID_Day.csv and ParticipantID_Night.csv
+        string finalPath = Path.Combine(playModeSaveDirectory, $"{participantID}_{blockLabel}.csv");
+
+        try
+        {
+            File.WriteAllText(finalPath, buffer.ToString()); // overwrite (keeps ONLY 2 files)
+            flushedBlockKeys.Add(key);
+            if (verboseLogs) Debug.Log("[DataRecorderV2] Wrote block CSV: " + finalPath);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("[DataRecorderV2] Failed to write CSV:\n" + e);
+        }
+
+        ResetBufferForNextBlock();
+    }
+
+    private static string NormalizeBlockLabel(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "UNKNOWN";
+        s = s.Trim();
+
+        if (s == "0") return "Day";
+        if (s == "1") return "Night";
+
+        if (s.IndexOf("Day", StringComparison.OrdinalIgnoreCase) >= 0) return "Day";
+        if (s.IndexOf("Night", StringComparison.OrdinalIgnoreCase) >= 0) return "Night";
+
+        return s;
+    }
+
+    private void ResetBufferForNextBlock()
+    {
+        buffer = new StringBuilder(1024 * 64);
+        buffer.Append(GetHeaderLine());
+        blockHasData = false;
+
+        surveyResponse = "";
+        surveyRT = -1f;
+        trialEnded = false;
+        trialEndRel = -1f;
+        trialStartAbs = -1f;
+        currentTrialIndex = -1;
+        ResetMergeRTState();
+        ResetDecelState();
+    }
+
     private void DetectTrialEndTransition()
     {
         if (lastTimeScale > 0f && Time.timeScale == 0f && !trialEnded)
         {
             trialEnded = true;
-            trialEndAbs = Time.realtimeSinceStartup;
             trialEndRel = GetTrialTimeRel();
-            trialEndReason = "TrialEnd";
             surveyStartAbs = Time.realtimeSinceStartup;
 
             SampleAndBufferRow();
@@ -275,19 +354,15 @@ public class DataRecorderV2 : MonoBehaviour
             Vector3 p = car.transform.position;
             x = p.x; y = p.y; z = p.z;
 
-            // ---- lane deviation ABS (world X centerline = 0) + count out-of-bounds entries ----
-            laneDeviation = Mathf.Abs(x);              // always positive
+            laneDeviation = Mathf.Abs(x);
             bool outNow = laneDeviation > LANE_BOUND_X;
 
-            // count only when transitioning from in-bounds -> out-of-bounds
             if (!wasOutOfLane && outNow)
                 laneDeviationCount++;
 
             wasOutOfLane = outNow;
 
             UpdateSpeedMph(p);
-
-            // ---- compute deceleration (m/s^2) from SpeedMPH over TimeAbs ----
             UpdateDecelerationMs2(timeAbs);
         }
         else
@@ -299,7 +374,6 @@ public class DataRecorderV2 : MonoBehaviour
 
         string sceneName = SceneManager.GetActiveScene().name ?? "";
 
-        // Survey correctness based on Scene string
         string surveyCorrect = "";
         if (!string.IsNullOrWhiteSpace(surveyResponse))
         {
@@ -318,7 +392,6 @@ public class DataRecorderV2 : MonoBehaviour
         float brakeInput = GetBrakeScaled0To100();
         float throttleInput = GetThrottleScaled0To100();
 
-        // ===== Car2 Logic + Merge Time as timestamp (ABS) =====
         string car2MergeTimeAbsStr = "";
         int collision01 = 0;
 
@@ -336,23 +409,17 @@ public class DataRecorderV2 : MonoBehaviour
             if (car2Mover.CollisionAbs > 0f) collisionAbs = car2Mover.CollisionAbs;
             if (car2Mover.DecelStartAbs > 0f) decelStartAbs = car2Mover.DecelStartAbs;
 
-            // Car2MergeTime = mergeStartAbs (absolute timestamp), like Car2CollisionAbs
             if (mergeStartAbs > 0f) car2MergeTimeAbsStr = F(mergeStartAbs);
-
             if (collisionAbs > 0f && timeAbs >= collisionAbs) collision01 = 1;
-
             if (collisionAbs > 0f) car2CollisionAbs = F(collisionAbs);
 
-            // TimeToCollision = collision - mergeStart (can be negative)
             if (mergeStartAbs > 0f && collisionAbs > 0f)
                 timeToCollision = F(collisionAbs - mergeStartAbs);
 
-            // DecelStartRel = decelAbs - trialStartAbs
             if (decelStartAbs > 0f && trialStartAbs > 0f)
                 car2DecelStartRel = F(decelStartAbs - trialStartAbs);
         }
 
-        // ===== Merge RT columns (from merge start to first input change) =====
         if (mergeStartAbs > 0f && timeAbs >= mergeStartAbs)
         {
             if (!mergeRTInitialized || mergeStartAbsCached != mergeStartAbs)
@@ -398,7 +465,6 @@ public class DataRecorderV2 : MonoBehaviour
             laneDeviationCount + "," +
             F(speedMph) + "," +
             F(decelerationMs2) + "," +
-            // removed: TrialEnded, TrialEndReason, TrialEndAbs
             F(trialEndRel) + "," +
             Csv(surveyResponse) + "," +
             Csv(surveyCorrect) + "," +
@@ -406,7 +472,7 @@ public class DataRecorderV2 : MonoBehaviour
             F(brakeInput) + "," +
             F(throttleInput) + "," +
             F(steeringInput) + "," +
-            Csv(car2MergeTimeAbsStr) + "," +   // <-- Car2MergeTime (ABS timestamp)
+            Csv(car2MergeTimeAbsStr) + "," +
             mergeRTSteerStr + "," +
             mergeRTBrakeStr + "," +
             mergeRTThrottleStr + "," +
@@ -417,17 +483,17 @@ public class DataRecorderV2 : MonoBehaviour
             "\n";
 
         buffer.Append(row);
+        blockHasData = true;
     }
 
     private void UpdateDecelerationMs2(float timeAbs)
     {
-        // Need two samples to compute delta
         if (!hasPrevSpeedSample)
         {
             hasPrevSpeedSample = true;
             prevSpeedMph = speedMph;
             prevSpeedTimeAbs = timeAbs;
-            decelerationMs2 = float.NaN; // first row has no decel
+            decelerationMs2 = float.NaN;
             return;
         }
 
@@ -438,17 +504,12 @@ public class DataRecorderV2 : MonoBehaviour
             return;
         }
 
-        // Convert mph -> m/s
         float vNow = speedMph * 0.44704f;
         float vPrev = prevSpeedMph * 0.44704f;
 
-        // acceleration (m/s^2)
         float accel = (vNow - vPrev) / dt;
-
-        // deceleration as positive magnitude when slowing down
         decelerationMs2 = Mathf.Max(0f, -accel);
 
-        // update previous
         prevSpeedMph = speedMph;
         prevSpeedTimeAbs = timeAbs;
     }
@@ -481,42 +542,15 @@ public class DataRecorderV2 : MonoBehaviour
         mergeRTThrottle = -1f;
     }
 
-    private void FlushToDiskAtEnd()
-    {
-        if (hasFlushed) return;
-        hasFlushed = true;
-
-        if (buffer == null || buffer.Length == 0)
-            return;
-
-        string pid = string.IsNullOrWhiteSpace(participantID) ? "UNKNOWN" : participantID.Trim();
-        string blk = string.IsNullOrWhiteSpace(blockLabel) ? "UNKNOWN" : blockLabel.Trim();
-
-        string finalPath = Path.Combine(
-            playModeSaveDirectory,
-            $"{pid}_{blk}_{DateTime.Now:yyyyMMdd_HHmmss}.csv"
-        );
-
-        try
-        {
-            File.WriteAllText(finalPath, buffer.ToString());
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("[DataRecorderV2] Failed to write CSV:\n" + e);
-        }
-    }
-
     private string GetHeaderLine()
     {
         return
             "ParticipantID,Block,TrialIndex,Scene,Event," +
             "TimeAbs,TrialTimeRel," +
             "X,Y,Z,LaneDeviationAbs,LaneDeviationCount,SpeedMPH,Deceleration," +
-            // removed: TrialEnded,TrialEndReason,TrialEndAbs
             "TrialEndRel," +
             "SurveyResponse,SurveyResponseCorrect,SurveyRT," +
-            "BrakeInput,ThrottleInput,SteeringInput,Car2MergeTime," + // <-- renamed
+            "BrakeInput,ThrottleInput,SteeringInput,Car2MergeTime," +
             "MergeRTSteer,MergeRTBrake,MergeRTThrottle," +
             "Collision,Car2DecelStartRel,Car2CollisionAbs,TimeToCollision\n";
     }
