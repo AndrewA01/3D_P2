@@ -1,4 +1,5 @@
-﻿using System;
+﻿
+using System;
 using System.IO;
 using System.Linq;
 using System.Globalization;
@@ -25,31 +26,37 @@ public class DataRecorderV2 : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool verboseLogs = false;
 
+    // thresholds
     private const float STEER_RT_THRESHOLD = 2f;
     private const float BRAKE_RT_THRESHOLD = 2f;
     private const float THROTTLE_RT_THRESHOLD = 2f;
 
+    // lane bounds
     private const float LANE_BOUND_X = 1.5f;
     private bool wasOutOfLane = false;
     private int laneDeviationCount = 0;
 
+    // buffer
     private StringBuilder buffer;
 
-    private string participantID = "UNKNOWN";
-    private string blockLabel = "UNKNOWN";
+    // captured naming state (captured at first MAIN trial start)
+    private bool mainTrialStartCaptured = false;
+    private string capturedParticipantID = "";
+    private string capturedBlockLabel = ""; // "Day"/"Night"
+    private string activeBlockKey = "";     // capturedParticipantID + "|" + capturedBlockLabel
     private bool blockHasData = false;
 
+    // prevent duplicate writes for same captured block
     private readonly HashSet<string> flushedBlockKeys = new HashSet<string>();
-    private string activeBlockKey = "";
 
-    private bool pendingEndOfBlockFlush = false;
-
+    // runtime references
     private GameObject car;
     private Rigidbody carRb;
     private Vector3 lastPos;
     private float lastPosTime;
     private float speedMph;
 
+    // decel state
     private bool hasPrevSpeedSample = false;
     private float prevSpeedMph = 0f;
     private float prevSpeedTimeAbs = 0f;
@@ -57,38 +64,40 @@ public class DataRecorderV2 : MonoBehaviour
 
     private float nextSampleTime;
 
+    // trial state
     private int currentTrialIndex = -1;
     private float trialStartAbs = -1f;
-
     private string trialType = "";
-
     private bool trialEnded = false;
     private float trialEndRel = -1f;
 
+    // survey
     private float surveyStartAbs = -1f;
     private string surveyResponse = "";
     private float surveyRT = -1f;
 
     private float laneDeviation = float.NaN;
-
     private bool surveyButtonsHooked = false;
     private float lastTimeScale = 1f;
 
     private MoveOnWaypoints car2Mover;
 
+    // merge RT state
     private bool mergeRTInitialized = false;
     private float mergeStartAbsCached = -1f;
-
     private float mergeBaselineSteer = float.NaN;
     private float mergeBaselineBrake = float.NaN;
     private float mergeBaselineThrottle = float.NaN;
-
     private float mergeRTSteer = -1f;
     private float mergeRTBrake = -1f;
     private float mergeRTThrottle = -1f;
 
+    // PlayerPrefs key for fallback participant ID (if you want persistence)
+    private const string PREF_LAST_PID = "HF_LastParticipantID";
+
     private void Awake()
     {
+        // strong singleton
         if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
@@ -125,7 +134,7 @@ public class DataRecorderV2 : MonoBehaviour
         RefreshFromExperimentController();
         TryHookSurveyButtons();
         DetectTrialEndTransition();
-        AutoFlushWhenBlockEnds();
+        AutoFlushWhenBlockEndsByTrialIndex();
 
         if (Time.unscaledTime >= nextSampleTime)
         {
@@ -138,7 +147,7 @@ public class DataRecorderV2 : MonoBehaviour
 
     private void OnApplicationQuit()
     {
-        FlushCurrentBlockNow();
+        FlushCapturedBlockNow();
     }
 
     private void OnDisable()
@@ -146,7 +155,7 @@ public class DataRecorderV2 : MonoBehaviour
 #if UNITY_EDITOR
         if (!Application.isPlaying) return;
 #endif
-        FlushCurrentBlockNow();
+        FlushCapturedBlockNow();
     }
 
     private void OnDestroy()
@@ -173,27 +182,46 @@ public class DataRecorderV2 : MonoBehaviour
 
     private void RefreshFromExperimentController()
     {
-        if (ExperimentController.Instance == null)
-            return;
+        var ctrl = ExperimentController.Instance;
+        if (ctrl == null) return;
 
-        if (!string.IsNullOrWhiteSpace(ExperimentController.Instance.participantID))
-            participantID = ExperimentController.Instance.participantID.Trim();
-
-        blockLabel = NormalizeBlockLabel(ExperimentController.Instance.currentBlock.ToString());
-
-        if (!string.IsNullOrWhiteSpace(participantID) && (blockLabel == "Day" || blockLabel == "Night"))
+        // detect first MAIN trial start and capture block + participant ID at that moment
+        // practiceTrialCount is the index where main begins (e.g., 2)
+        if (!mainTrialStartCaptured && ctrl.currentTrialIndex == ctrl.practiceTrialCount)
         {
-            string key = participantID + "|" + blockLabel;
-            if (string.IsNullOrEmpty(activeBlockKey))
-                activeBlockKey = key;
+            // capture participantID (prefer controller value; fallback to PlayerPrefs if empty)
+            string pid = (ctrl.participantID ?? "").Trim();
+            if (string.IsNullOrEmpty(pid))
+                pid = PlayerPrefs.GetString(PREF_LAST_PID, "P000").Trim();
+            if (string.IsNullOrEmpty(pid)) pid = "P000";
+
+            // capture block label from controller (normalize)
+            string blk = NormalizeBlockLabel(ctrl.currentBlock.ToString());
+
+            // only accept Day/Night labels; otherwise leave capture disabled
+            if (!string.IsNullOrWhiteSpace(blk) && (blk == "Day" || blk == "Night"))
+            {
+                capturedParticipantID = pid;
+                capturedBlockLabel = blk;
+                activeBlockKey = capturedParticipantID + "|" + capturedBlockLabel;
+                mainTrialStartCaptured = true;
+
+                if (verboseLogs) Debug.Log($"[DataRecorderV2] Captured block naming: {activeBlockKey}");
+            }
+            else
+            {
+                // fallback: don't capture yet (will be captured later or use PlayerPrefs at flush)
+                if (verboseLogs) Debug.LogWarning($"[DataRecorderV2] Block label not valid for capture: '{blk}'");
+            }
         }
 
-        int idx = ExperimentController.Instance.currentTrialIndex;
+        // update trial index change handling (reset per-trial state when trial begins)
+        int idx = ctrl.currentTrialIndex;
         if (idx != currentTrialIndex)
         {
             currentTrialIndex = idx;
 
-            if (ExperimentController.Instance.experimentRunning && currentTrialIndex >= 0)
+            if (ctrl.experimentRunning && currentTrialIndex >= 0)
             {
                 trialStartAbs = Time.realtimeSinceStartup;
 
@@ -212,11 +240,12 @@ public class DataRecorderV2 : MonoBehaviour
             }
         }
 
-        var cond = ExperimentController.Instance.CurrentCondition;
+        var cond = ctrl.CurrentCondition;
         trialType = cond.isPractice ? "Practice" : "Main";
     }
 
-    private void AutoFlushWhenBlockEnds()
+    // Auto-flush when the controller completes the last index (e.g., after index 17)
+    private void AutoFlushWhenBlockEndsByTrialIndex()
     {
         var ctrl = ExperimentController.Instance;
         if (ctrl == null) return;
@@ -224,42 +253,99 @@ public class DataRecorderV2 : MonoBehaviour
         int totalTrials = Mathf.Max(0, ctrl.practiceTrialCount + ctrl.mainTrialCount);
         if (totalTrials <= 0) return;
 
-        int lastIndex = totalTrials - 1; // for you: 17
+        int lastIndex = totalTrials - 1;
 
+        // arm flush when we reach last index
         if (ctrl.experimentRunning && ctrl.currentTrialIndex >= lastIndex)
-            pendingEndOfBlockFlush = true;
+            pendingFlushArmed = true;
 
-        if (pendingEndOfBlockFlush && (!ctrl.experimentRunning || ctrl.currentTrialIndex < 0))
+        // execute flush after controller finishes and returns to subblock (experimentRunning=false or idx < 0)
+        if (pendingFlushArmed && (!ctrl.experimentRunning || ctrl.currentTrialIndex < 0))
         {
-            FlushCurrentBlockNow();
-            pendingEndOfBlockFlush = false;
-            activeBlockKey = ""; // prepare for next block
+            if (verboseLogs) Debug.Log("[DataRecorderV2] Auto-flush triggered by trial index end.");
+            FlushCapturedBlockNow();
+            pendingFlushArmed = false;
+
+            // prepare for next block run
+            mainTrialStartCaptured = false;
+            capturedParticipantID = "";
+            capturedBlockLabel = "";
+            activeBlockKey = "";
         }
     }
 
-    public void FlushCurrentBlockNow()
+    private bool pendingFlushArmed = false;
+
+    /// <summary>
+    /// Write the CSV for the captured block (if captured). If nothing was captured,
+    /// try to derive a participantID + blockLabel at flush time (fall back to PlayerPrefs).
+    /// </summary>
+    public void FlushCapturedBlockNow()
     {
-        participantID = (participantID ?? "").Trim();
-        blockLabel = NormalizeBlockLabel(blockLabel);
+        // Determine final pid/block to use
+        string pid = capturedParticipantID;
+        string blk = capturedBlockLabel;
 
-        if (string.IsNullOrWhiteSpace(participantID)) return;
-        if (participantID.Equals("UNKNOWN", StringComparison.OrdinalIgnoreCase)) return;
-        if (blockLabel != "Day" && blockLabel != "Night") return;
+        // If we didn't capture when main started, attempt to derive at flush time from ExperimentController
+        if (string.IsNullOrWhiteSpace(pid) || string.IsNullOrWhiteSpace(blk))
+        {
+            var ctrl = ExperimentController.Instance;
+            if (ctrl != null)
+            {
+                if (string.IsNullOrWhiteSpace(pid) && !string.IsNullOrWhiteSpace(ctrl.participantID))
+                    pid = ctrl.participantID.Trim();
 
-        string key = participantID + "|" + blockLabel;
-        if (flushedBlockKeys.Contains(key)) return;
+                if (string.IsNullOrWhiteSpace(blk))
+                    blk = NormalizeBlockLabel(ctrl.currentBlock.ToString());
+            }
 
-        if (!blockHasData || buffer == null || buffer.Length == 0) return;
+            // final fallback to PlayerPrefs or P000
+            if (string.IsNullOrWhiteSpace(pid))
+                pid = PlayerPrefs.GetString(PREF_LAST_PID, "P000").Trim();
+            if (string.IsNullOrWhiteSpace(pid)) pid = "P000";
+        }
 
-        // EXACT filename format you requested:
-        // ParticipantID_Day.csv and ParticipantID_Night.csv
-        string finalPath = Path.Combine(playModeSaveDirectory, $"{participantID}_{blockLabel}.csv");
+        // normalize blk
+        blk = NormalizeBlockLabel(blk);
+
+        if (string.IsNullOrWhiteSpace(pid) || pid.Equals("UNKNOWN", StringComparison.OrdinalIgnoreCase))
+        {
+            if (verboseLogs) Debug.LogWarning("[DataRecorderV2] Flush skipped: invalid participant ID.");
+            ResetBufferForNextBlock(); // avoid writing junk later
+            return;
+        }
+
+        if (blk != "Day" && blk != "Night")
+        {
+            if (verboseLogs) Debug.LogWarning("[DataRecorderV2] Flush skipped: invalid block label.");
+            ResetBufferForNextBlock();
+            return;
+        }
+
+        string key = pid + "|" + blk;
+        if (flushedBlockKeys.Contains(key))
+        {
+            if (verboseLogs) Debug.Log($"[DataRecorderV2] Flush skipped: already flushed {key}");
+            ResetBufferForNextBlock();
+            return;
+        }
+
+        if (!blockHasData || buffer == null || buffer.Length == 0)
+        {
+            if (verboseLogs) Debug.LogWarning("[DataRecorderV2] Flush skipped: no data for block.");
+            ResetBufferForNextBlock();
+            flushedBlockKeys.Add(key); // mark as flushed to avoid repeated empty writes
+            return;
+        }
+
+        // EXACT filename you requested: ParticipantID_Day.csv or ParticipantID_Night.csv
+        string finalPath = Path.Combine(playModeSaveDirectory, $"{pid}_{blk}.csv");
 
         try
         {
-            File.WriteAllText(finalPath, buffer.ToString()); // overwrite (keeps ONLY 2 files)
+            File.WriteAllText(finalPath, buffer.ToString());
             flushedBlockKeys.Add(key);
-            if (verboseLogs) Debug.Log("[DataRecorderV2] Wrote block CSV: " + finalPath);
+            if (verboseLogs) Debug.Log($"[DataRecorderV2] Wrote block CSV: {finalPath}");
         }
         catch (Exception e)
         {
@@ -269,32 +355,20 @@ public class DataRecorderV2 : MonoBehaviour
         ResetBufferForNextBlock();
     }
 
-    private static string NormalizeBlockLabel(string s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return "UNKNOWN";
-        s = s.Trim();
-
-        if (s == "0") return "Day";
-        if (s == "1") return "Night";
-
-        if (s.IndexOf("Day", StringComparison.OrdinalIgnoreCase) >= 0) return "Day";
-        if (s.IndexOf("Night", StringComparison.OrdinalIgnoreCase) >= 0) return "Night";
-
-        return s;
-    }
-
     private void ResetBufferForNextBlock()
     {
         buffer = new StringBuilder(1024 * 64);
         buffer.Append(GetHeaderLine());
         blockHasData = false;
 
+        // reset trial-local things
         surveyResponse = "";
         surveyRT = -1f;
         trialEnded = false;
         trialEndRel = -1f;
         trialStartAbs = -1f;
         currentTrialIndex = -1;
+
         ResetMergeRTState();
         ResetDecelState();
     }
@@ -344,6 +418,8 @@ public class DataRecorderV2 : MonoBehaviour
 
     private void SampleAndBufferRow()
     {
+        // If the user specifically wanted to only name files from the main trial's captured label,
+        // it's still reasonable to record rows earlier — but we only write files at flush time using captured labels.
         float timeAbs = Time.realtimeSinceStartup;
         float trialTimeRel = GetTrialTimeRel();
 
@@ -378,7 +454,6 @@ public class DataRecorderV2 : MonoBehaviour
         if (!string.IsNullOrWhiteSpace(surveyResponse))
         {
             bool ok = false;
-
             if (surveyResponse.Equals("Red", StringComparison.OrdinalIgnoreCase))
                 ok = sceneName.IndexOf("Red", StringComparison.OrdinalIgnoreCase) >= 0;
             else if (surveyResponse.Equals("Amber", StringComparison.OrdinalIgnoreCase) ||
@@ -394,7 +469,6 @@ public class DataRecorderV2 : MonoBehaviour
 
         string car2MergeTimeAbsStr = "";
         int collision01 = 0;
-
         string car2DecelStartRel = "";
         string car2CollisionAbs = "";
         string timeToCollision = "";
@@ -420,6 +494,7 @@ public class DataRecorderV2 : MonoBehaviour
                 car2DecelStartRel = F(decelStartAbs - trialStartAbs);
         }
 
+        // Merge RT detection
         if (mergeStartAbs > 0f && timeAbs >= mergeStartAbs)
         {
             if (!mergeRTInitialized || mergeStartAbsCached != mergeStartAbs)
@@ -451,8 +526,8 @@ public class DataRecorderV2 : MonoBehaviour
         string mergeRTThrottleStr = (mergeRTThrottle >= 0f) ? F(mergeRTThrottle) : "";
 
         string row =
-            Csv(participantID) + "," +
-            Csv(blockLabel) + "," +
+            Csv(capturedParticipantID != "" ? capturedParticipantID : PlayerPrefs.GetString(PREF_LAST_PID, "P000")) + "," +
+            Csv(capturedBlockLabel != "" ? capturedBlockLabel : "UNKNOWN") + "," +
             currentTrialIndex + "," +
             Csv(sceneName) + "," +
             Csv(trialType) + "," +
@@ -506,7 +581,6 @@ public class DataRecorderV2 : MonoBehaviour
 
         float vNow = speedMph * 0.44704f;
         float vPrev = prevSpeedMph * 0.44704f;
-
         float accel = (vNow - vPrev) / dt;
         decelerationMs2 = Mathf.Max(0f, -accel);
 
@@ -575,20 +649,17 @@ public class DataRecorderV2 : MonoBehaviour
 
     private float GetSteeringScaledMinus100To100()
     {
-        try { return Mathf.Clamp(Input.GetAxisRaw("Horizontal") * 100f, -100f, 100f); }
-        catch { return 0f; }
+        try { return Mathf.Clamp(Input.GetAxisRaw("Horizontal") * 100f, -100f, 100f); } catch { return 0f; }
     }
 
     private float GetBrakeScaled0To100()
     {
-        try { return Mathf.Clamp(Input.GetAxisRaw("Brake") * 100f, 0f, 100f); }
-        catch { return 0f; }
+        try { return Mathf.Clamp(Input.GetAxisRaw("Brake") * 100f, 0f, 100f); } catch { return 0f; }
     }
 
     private float GetThrottleScaled0To100()
     {
-        try { return Mathf.Clamp(Input.GetAxisRaw("Throttle") * 100f, 0f, 100f); }
-        catch { return 0f; }
+        try { return Mathf.Clamp(Input.GetAxisRaw("Throttle") * 100f, 0f, 100f); } catch { return 0f; }
     }
 
     private static string Csv(string s)
@@ -603,6 +674,18 @@ public class DataRecorderV2 : MonoBehaviour
     {
         if (float.IsNaN(v) || float.IsInfinity(v)) return "";
         return v.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
+    private static string NormalizeBlockLabel(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "UNKNOWN";
+        s = s.Trim();
+        // controller may give "Day" or "Night" or numeric if you passed numbers previously
+        if (s == "0") return "Day";
+        if (s == "1") return "Night";
+        if (s.IndexOf("Day", StringComparison.OrdinalIgnoreCase) >= 0) return "Day";
+        if (s.IndexOf("Night", StringComparison.OrdinalIgnoreCase) >= 0) return "Night";
+        return s;
     }
 
     private GameObject FindInActiveSceneByName(string name)
