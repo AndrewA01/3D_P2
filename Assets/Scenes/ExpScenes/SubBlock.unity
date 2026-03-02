@@ -3452,8 +3452,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   playerObjectName: Car 1
-  sampleIntervalSeconds: 0.1
+  sampleIntervalSeconds: 0.01
   playModeSaveDirectory: Assets/CSVCollection/NewPL
+  verboseLogs: 0
 --- !u!4 &2078838238
 Transform:
   m_ObjectHideFlags: 0
