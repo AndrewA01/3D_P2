@@ -1,5 +1,4 @@
-﻿
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Globalization;
@@ -18,7 +17,7 @@ public class DataRecorderV2 : MonoBehaviour
     public string playerObjectName = "Car 1";
 
     [Header("Sampling")]
-    [SerializeField] private float sampleIntervalSeconds = 0.1f;
+    [SerializeField] private float sampleIntervalSeconds = 0.01f; // CHANGED as requested
 
     [Header("Save Paths")]
     [SerializeField] private string playModeSaveDirectory = "Assets/CSVCollection/NewPL";
@@ -27,9 +26,9 @@ public class DataRecorderV2 : MonoBehaviour
     [SerializeField] private bool verboseLogs = false;
 
     // thresholds
-    private const float STEER_RT_THRESHOLD = 2f;
-    private const float BRAKE_RT_THRESHOLD = 2f;
-    private const float THROTTLE_RT_THRESHOLD = 2f;
+    private const float STEER_RT_THRESHOLD = 5f;
+    private const float BRAKE_RT_THRESHOLD = 5f;
+    private const float THROTTLE_RT_THRESHOLD = 5f;
 
     // lane bounds
     private const float LANE_BOUND_X = 1.5f;
@@ -210,7 +209,6 @@ public class DataRecorderV2 : MonoBehaviour
             }
             else
             {
-                // fallback: don't capture yet (will be captured later or use PlayerPrefs at flush)
                 if (verboseLogs) Debug.LogWarning($"[DataRecorderV2] Block label not valid for capture: '{blk}'");
             }
         }
@@ -418,8 +416,6 @@ public class DataRecorderV2 : MonoBehaviour
 
     private void SampleAndBufferRow()
     {
-        // If the user specifically wanted to only name files from the main trial's captured label,
-        // it's still reasonable to record rows earlier — but we only write files at flush time using captured labels.
         float timeAbs = Time.realtimeSinceStartup;
         float trialTimeRel = GetTrialTimeRel();
 
@@ -450,6 +446,12 @@ public class DataRecorderV2 : MonoBehaviour
 
         string sceneName = SceneManager.GetActiveScene().name ?? "";
 
+        // NEW: scene condition columns (blank for Subblock)
+        string expectancy = "";
+        string tsColor = "";
+        string mergeFrom = "";
+        GetSceneConditionFields(sceneName, out expectancy, out tsColor, out mergeFrom);
+
         string surveyCorrect = "";
         if (!string.IsNullOrWhiteSpace(surveyResponse))
         {
@@ -467,11 +469,12 @@ public class DataRecorderV2 : MonoBehaviour
         float brakeInput = GetBrakeScaled0To100();
         float throttleInput = GetThrottleScaled0To100();
 
-        string car2MergeTimeAbsStr = "";
+        // car2 fields
+        string car2MergeTimeRelStr = "";   // CHANGED: now rel, but name in CSV stays "Car2MergeTime" per header
         int collision01 = 0;
         string car2DecelStartRel = "";
-        string car2CollisionAbs = "";
-        string timeToCollision = "";
+        string car2CollisionRelStr = "";  // CHANGED: was abs, now rel
+        string timeToCollisionRelStr = ""; // CHANGED: based on rel
 
         float mergeStartAbs = -1f;
         float collisionAbs = -1f;
@@ -483,18 +486,29 @@ public class DataRecorderV2 : MonoBehaviour
             if (car2Mover.CollisionAbs > 0f) collisionAbs = car2Mover.CollisionAbs;
             if (car2Mover.DecelStartAbs > 0f) decelStartAbs = car2Mover.DecelStartAbs;
 
-            if (mergeStartAbs > 0f) car2MergeTimeAbsStr = F(mergeStartAbs);
-            if (collisionAbs > 0f && timeAbs >= collisionAbs) collision01 = 1;
-            if (collisionAbs > 0f) car2CollisionAbs = F(collisionAbs);
+            // CHANGED: Car2MergeTime is now trial-relative
+            if (mergeStartAbs > 0f && trialStartAbs > 0f)
+                car2MergeTimeRelStr = F(mergeStartAbs - trialStartAbs);
 
-            if (mergeStartAbs > 0f && collisionAbs > 0f)
-                timeToCollision = F(collisionAbs - mergeStartAbs);
+            if (collisionAbs > 0f && timeAbs >= collisionAbs) collision01 = 1;
+
+            // CHANGED: Car2CollisionRel is trial-relative
+            if (collisionAbs > 0f && trialStartAbs > 0f)
+                car2CollisionRelStr = F(collisionAbs - trialStartAbs);
+
+            // CHANGED: TimeToCollision based on trial-relative times
+            if (mergeStartAbs > 0f && collisionAbs > 0f && trialStartAbs > 0f)
+            {
+                float mergeRel = mergeStartAbs - trialStartAbs;
+                float collisionRel = collisionAbs - trialStartAbs;
+                timeToCollisionRelStr = F(collisionRel - mergeRel);
+            }
 
             if (decelStartAbs > 0f && trialStartAbs > 0f)
                 car2DecelStartRel = F(decelStartAbs - trialStartAbs);
         }
 
-        // Merge RT detection
+        // Merge RT detection (still computed in absolute time, but values are RT durations; unchanged)
         if (mergeStartAbs > 0f && timeAbs >= mergeStartAbs)
         {
             if (!mergeRTInitialized || mergeStartAbsCached != mergeStartAbs)
@@ -530,6 +544,9 @@ public class DataRecorderV2 : MonoBehaviour
             Csv(capturedBlockLabel != "" ? capturedBlockLabel : "UNKNOWN") + "," +
             currentTrialIndex + "," +
             Csv(sceneName) + "," +
+            Csv(expectancy) + "," +        // NEW
+            Csv(tsColor) + "," +           // NEW
+            Csv(mergeFrom) + "," +         // NEW
             Csv(trialType) + "," +
             F(timeAbs) + "," +
             F(trialTimeRel) + "," +
@@ -547,14 +564,14 @@ public class DataRecorderV2 : MonoBehaviour
             F(brakeInput) + "," +
             F(throttleInput) + "," +
             F(steeringInput) + "," +
-            Csv(car2MergeTimeAbsStr) + "," +
+            Csv(car2MergeTimeRelStr) + "," +     // CHANGED to rel
             mergeRTSteerStr + "," +
             mergeRTBrakeStr + "," +
             mergeRTThrottleStr + "," +
             collision01 + "," +
             Csv(car2DecelStartRel) + "," +
-            Csv(car2CollisionAbs) + "," +
-            Csv(timeToCollision) +
+            Csv(car2CollisionRelStr) + "," +     // CHANGED + renamed column in header
+            Csv(timeToCollisionRelStr) +          // CHANGED to rel-based
             "\n";
 
         buffer.Append(row);
@@ -619,14 +636,14 @@ public class DataRecorderV2 : MonoBehaviour
     private string GetHeaderLine()
     {
         return
-            "ParticipantID,Block,TrialIndex,Scene,Event," +
+            "ParticipantID,Block,TrialIndex,Scene,Expectancy,TSColor,MergeFrom,Event," + // NEW
             "TimeAbs,TrialTimeRel," +
             "X,Y,Z,LaneDeviationAbs,LaneDeviationCount,SpeedMPH,Deceleration," +
             "TrialEndRel," +
             "SurveyResponse,SurveyResponseCorrect,SurveyRT," +
-            "BrakeInput,ThrottleInput,SteeringInput,Car2MergeTime," +
+            "BrakeInput,ThrottleInput,SteeringInput,Car2MergeTime," +   // name kept, but values now rel
             "MergeRTSteer,MergeRTBrake,MergeRTThrottle," +
-            "Collision,Car2DecelStartRel,Car2CollisionAbs,TimeToCollision\n";
+            "Collision,Car2DecelStartRel,Car2CollisionRel,TimeToCollision\n"; // CHANGED names
     }
 
     private void UpdateSpeedMph(Vector3 currentPos)
@@ -680,7 +697,6 @@ public class DataRecorderV2 : MonoBehaviour
     {
         if (string.IsNullOrWhiteSpace(s)) return "UNKNOWN";
         s = s.Trim();
-        // controller may give "Day" or "Night" or numeric if you passed numbers previously
         if (s == "0") return "Day";
         if (s == "1") return "Night";
         if (s.IndexOf("Day", StringComparison.OrdinalIgnoreCase) >= 0) return "Day";
@@ -694,5 +710,34 @@ public class DataRecorderV2 : MonoBehaviour
             .GetRootGameObjects()
             .SelectMany(go => go.GetComponentsInChildren<Transform>(true))
             .FirstOrDefault(t => t.name == name)?.gameObject;
+    }
+
+    // NEW: derives Expectancy / TSColor / MergeFrom from scene name (blank for Subblock)
+    private static void GetSceneConditionFields(string sceneName, out string expectancy, out string tsColor, out string mergeFrom)
+    {
+        expectancy = "";
+        tsColor = "";
+        mergeFrom = "";
+
+        if (string.IsNullOrWhiteSpace(sceneName)) return;
+        if (sceneName.IndexOf("Subblock", StringComparison.OrdinalIgnoreCase) >= 0) return;
+
+        // Expectancy: E -> Expected, U -> U
+        if (sceneName.StartsWith("E_", StringComparison.OrdinalIgnoreCase) || sceneName.Equals("E", StringComparison.OrdinalIgnoreCase))
+            expectancy = "Expected";
+        else if (sceneName.StartsWith("U_", StringComparison.OrdinalIgnoreCase) || sceneName.Equals("U", StringComparison.OrdinalIgnoreCase))
+            expectancy = "U";
+
+        // TSColor: Red / Amb
+        if (sceneName.IndexOf("_Red_", StringComparison.OrdinalIgnoreCase) >= 0 || sceneName.EndsWith("_Red", StringComparison.OrdinalIgnoreCase))
+            tsColor = "Red";
+        else if (sceneName.IndexOf("_Amb_", StringComparison.OrdinalIgnoreCase) >= 0 || sceneName.EndsWith("_Amb", StringComparison.OrdinalIgnoreCase))
+            tsColor = "Amb";
+
+        // MergeFrom: L -> Left, R -> Right
+        if (sceneName.EndsWith("_L", StringComparison.OrdinalIgnoreCase) || sceneName.Equals("L", StringComparison.OrdinalIgnoreCase))
+            mergeFrom = "Left";
+        else if (sceneName.EndsWith("_R", StringComparison.OrdinalIgnoreCase) || sceneName.Equals("R", StringComparison.OrdinalIgnoreCase))
+            mergeFrom = "Right";
     }
 }
